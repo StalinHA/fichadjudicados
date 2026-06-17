@@ -13,10 +13,12 @@ import re
 
 # Configuración de la página
 st.set_page_config(
-    page_title="Dashboard de Análisis de Productos",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_config=st.PageConfig(
+        page_title="Dashboard de Análisis de Productos",
+        page_icon="📊",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
 )
 
 # ============ LISTA COMPLETA DE MARCAS ============
@@ -62,9 +64,6 @@ st.markdown("""
         background: linear-gradient(90deg, #f0f2f6, #ffffff);
         border-radius: 10px;
         margin-bottom: 2rem;
-    }
-    .main-header h1 {
-        color: #1f77b4 !important;
     }
     .metric-card {
         background: white;
@@ -132,25 +131,6 @@ st.markdown("""
     .success-box strong {
         color: #155724;
     }
-    .estado-activo {
-        background-color: #28a745;
-        color: white;
-        padding: 0.2rem 0.8rem;
-        border-radius: 20px;
-        display: inline-block;
-        font-weight: bold;
-    }
-    /* Corregir colores de texto */
-    .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4 {
-        color: #1f77b4 !important;
-    }
-    .stMarkdown p, .stMarkdown li {
-        color: #333 !important;
-    }
-    .stMarkdown strong {
-        color: #1f77b4 !important;
-    }
-    /* Tarjeta de Junio */
     .junio-header {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         padding: 1.5rem;
@@ -166,7 +146,6 @@ st.markdown("""
         color: rgba(255,255,255,0.9) !important;
         margin: 0;
     }
-    /* Tarjeta de análisis completo */
     .analisis-header {
         background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
         padding: 1rem;
@@ -309,7 +288,7 @@ class ProductAnalyzer:
         if self.df is None or self.df.empty:
             return
         
-        # Convertir fechas
+        # Convertir fechas - IMPORTANTE: manejar el formato exacto
         self.df['fecha_registro_dt'] = pd.to_datetime(
             self.df['fecha_registro'], 
             format='%d/%m/%Y %I:%M:%S %p',
@@ -348,6 +327,7 @@ class ProductAnalyzer:
         self.df['mes_publicacion'] = self.df['fecha_publicacion_dt'].dt.month
         self.df['año_mes_publicacion'] = self.df['fecha_publicacion_dt'].dt.strftime('%Y-%m')
         self.df['mes_nombre_publicacion'] = self.df['fecha_publicacion_dt'].dt.strftime('%B %Y')
+        self.df['dia_publicacion'] = self.df['fecha_publicacion_dt'].dt.day
     
     def _extract_brand(self, descripcion):
         """Extrae la marca de la descripcion usando la lista completa"""
@@ -527,69 +507,189 @@ def mostrar_analisis_fechas(df):
     """Muestra el análisis de fechas por año y mes"""
     st.subheader("📅 Análisis de Productos por Fecha de Publicación")
     
+    # Verificar que hay datos
+    if df.empty:
+        st.warning("No hay datos para mostrar en el análisis de fechas")
+        return
+    
+    # Verificar que la columna de fecha existe y tiene datos válidos
+    if 'fecha_publicacion_dt' not in df.columns:
+        st.error("No se encontró la columna de fecha de publicación")
+        return
+    
+    # Eliminar filas con fechas nulas
+    df_fechas = df.dropna(subset=['fecha_publicacion_dt']).copy()
+    
+    if df_fechas.empty:
+        st.warning("No hay fechas de publicación válidas en los datos")
+        return
+    
     # Crear columnas para año y mes
-    df_fechas = df.copy()
     df_fechas['año'] = df_fechas['fecha_publicacion_dt'].dt.year
     df_fechas['mes'] = df_fechas['fecha_publicacion_dt'].dt.month
     df_fechas['mes_nombre'] = df_fechas['fecha_publicacion_dt'].dt.strftime('%B')
+    df_fechas['dia'] = df_fechas['fecha_publicacion_dt'].dt.day
+    df_fechas['fecha_completa'] = df_fechas['fecha_publicacion_dt'].dt.strftime('%d/%m/%Y')
     
-    # Agrupar por año y mes
-    df_agrupado = df_fechas.groupby(['año', 'mes', 'mes_nombre']).agg({
-        'ID_ProductoOfertado': 'count',
-        'precio_float': ['mean', 'min', 'max'],
-        'es_activo': 'sum'
-    }).reset_index()
+    # ============ FILTROS INTERACTIVOS PARA FECHAS ============
+    col1, col2, col3 = st.columns(3)
     
-    df_agrupado.columns = ['Año', 'Mes', 'Mes Nombre', 'Total Productos', 
-                           'Precio Promedio', 'Precio Min', 'Precio Max', 'Activos']
+    with col1:
+        años_disponibles = sorted(df_fechas['año'].unique())
+        año_seleccionado = st.selectbox("📅 Seleccionar Año:", ['Todos'] + años_disponibles)
     
-    # Mostrar tabla
-    st.dataframe(df_agrupado, use_container_width=True)
+    with col2:
+        meses_disponibles = sorted(df_fechas['mes'].unique())
+        meses_nombres = {1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril', 5: 'Mayo', 6: 'Junio',
+                         7: 'Julio', 8: 'Agosto', 9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'}
+        meses_opciones = ['Todos'] + [meses_nombres[m] for m in meses_disponibles]
+        mes_seleccionado = st.selectbox("📅 Seleccionar Mes:", meses_opciones)
     
-    # Gráfico de evolución por mes
-    st.subheader("📈 Evolución de Productos por Mes")
+    with col3:
+        categorias_disponibles = ['Todos'] + sorted(df_fechas['categoria'].unique().tolist())
+        categoria_fecha = st.selectbox("📂 Filtrar por Categoria:", categorias_disponibles)
     
-    fig = px.line(df_agrupado, x='Mes Nombre', y='Total Productos',
-                  title='Cantidad de Productos por Mes',
-                  labels={'Total Productos': 'Cantidad', 'Mes Nombre': 'Mes'},
-                  markers=True)
-    fig.update_layout(height=400)
-    st.plotly_chart(fig, use_container_width=True)
+    # Aplicar filtros
+    df_filtrado_fechas = df_fechas.copy()
     
-    # Gráfico de barras por año
-    st.subheader("📊 Productos por Año")
+    if año_seleccionado != 'Todos':
+        df_filtrado_fechas = df_filtrado_fechas[df_filtrado_fechas['año'] == año_seleccionado]
     
-    df_anios = df_agrupado.groupby('Año').agg({'Total Productos': 'sum'}).reset_index()
+    if mes_seleccionado != 'Todos':
+        mes_num = {v: k for k, v in meses_nombres.items()}[mes_seleccionado]
+        df_filtrado_fechas = df_filtrado_fechas[df_filtrado_fechas['mes'] == mes_num]
     
-    fig = px.bar(df_anios, x='Año', y='Total Productos',
-                 title='Productos por Año',
-                 color='Año', text='Total Productos')
-    fig.update_traces(textposition='outside')
-    fig.update_layout(height=350)
-    st.plotly_chart(fig, use_container_width=True)
+    if categoria_fecha != 'Todos':
+        df_filtrado_fechas = df_filtrado_fechas[df_filtrado_fechas['categoria'] == categoria_fecha]
     
-    # Gráfico de distribución por año y mes (heatmap)
-    st.subheader("🗓️ Mapa de Calor - Productos por Año y Mes")
+    st.info(f"📊 Mostrando {len(df_filtrado_fechas)} registros")
     
-    pivot_df = df_agrupado.pivot_table(
-        index='Año', 
-        columns='Mes', 
-        values='Total Productos',
-        fill_value=0
-    )
+    # ============ MÉTRICAS DE FECHAS ============
+    col1, col2, col3, col4 = st.columns(4)
     
-    # Renombrar meses
-    meses_nombres = {1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun',
-                     7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'}
-    pivot_df.columns = [meses_nombres.get(m, m) for m in pivot_df.columns]
+    with col1:
+        st.metric("📦 Total Productos", len(df_filtrado_fechas))
     
-    fig = px.imshow(pivot_df, 
-                    title='Mapa de Calor - Productos por Año y Mes',
-                    labels=dict(x="Mes", y="Año", color="Cantidad"),
-                    color_continuous_scale='Viridis',
-                    aspect="auto")
-    fig.update_layout(height=400)
-    st.plotly_chart(fig, use_container_width=True)
+    with col2:
+        if not df_filtrado_fechas.empty:
+            fecha_min = df_filtrado_fechas['fecha_publicacion_dt'].min().strftime('%d/%m/%Y')
+            st.metric("📅 Fecha Más Antigua", fecha_min)
+    
+    with col3:
+        if not df_filtrado_fechas.empty:
+            fecha_max = df_filtrado_fechas['fecha_publicacion_dt'].max().strftime('%d/%m/%Y')
+            st.metric("📅 Fecha Más Reciente", fecha_max)
+    
+    with col4:
+        st.metric("🏷️ Marcas", len(df_filtrado_fechas['marca'].unique()))
+    
+    st.divider()
+    
+    # ============ GRÁFICOS ============
+    if not df_filtrado_fechas.empty:
+        # Gráfico 1: Productos por Año
+        st.subheader("📊 Productos por Año")
+        df_anios = df_filtrado_fechas.groupby('año').agg({
+            'ID_ProductoOfertado': 'count'
+        }).reset_index()
+        df_anios.columns = ['Año', 'Cantidad']
+        
+        fig1 = px.bar(df_anios, x='Año', y='Cantidad',
+                      title='Cantidad de Productos por Año',
+                      color='Año', text='Cantidad')
+        fig1.update_traces(textposition='outside')
+        fig1.update_layout(height=350)
+        st.plotly_chart(fig1, use_container_width=True)
+        
+        # Gráfico 2: Productos por Mes (con año seleccionado o todos)
+        st.subheader("📈 Productos por Mes")
+        
+        if año_seleccionado != 'Todos':
+            df_meses = df_filtrado_fechas.groupby(['mes', 'mes_nombre']).agg({
+                'ID_ProductoOfertado': 'count'
+            }).reset_index()
+            df_meses.columns = ['Mes', 'Mes Nombre', 'Cantidad']
+            df_meses = df_meses.sort_values('Mes')
+            
+            fig2 = px.bar(df_meses, x='Mes Nombre', y='Cantidad',
+                          title=f'Productos por Mes - {año_seleccionado}',
+                          color='Mes Nombre', text='Cantidad')
+            fig2.update_traces(textposition='outside')
+            fig2.update_layout(height=350)
+            st.plotly_chart(fig2, use_container_width=True)
+        else:
+            # Agrupar por año y mes
+            df_meses_anios = df_filtrado_fechas.groupby(['año', 'mes', 'mes_nombre']).agg({
+                'ID_ProductoOfertado': 'count'
+            }).reset_index()
+            df_meses_anios.columns = ['Año', 'Mes', 'Mes Nombre', 'Cantidad']
+            
+            fig2 = px.line(df_meses_anios, x='Mes Nombre', y='Cantidad',
+                           color='Año', markers=True,
+                           title='Evolución de Productos por Mes (por Año)')
+            fig2.update_layout(height=350)
+            st.plotly_chart(fig2, use_container_width=True)
+        
+        # Gráfico 3: Distribución por Categoría (en fechas)
+        st.subheader("📂 Distribución por Categoría - Fechas")
+        df_cat_fechas = df_filtrado_fechas['categoria'].value_counts().reset_index()
+        df_cat_fechas.columns = ['Categoría', 'Cantidad']
+        
+        fig3 = px.pie(df_cat_fechas, values='Cantidad', names='Categoría',
+                      title='Distribución de Categorías',
+                      color_discrete_sequence=px.colors.qualitative.Set2)
+        fig3.update_traces(textposition='inside', textinfo='percent+label')
+        fig3.update_layout(height=400)
+        st.plotly_chart(fig3, use_container_width=True)
+        
+        # Gráfico 4: Evolución diaria (si hay suficientes días)
+        st.subheader("📊 Evolución Diaria")
+        
+        df_dias = df_filtrado_fechas.groupby('fecha_completa').agg({
+            'ID_ProductoOfertado': 'count'
+        }).reset_index()
+        df_dias.columns = ['Fecha', 'Cantidad']
+        df_dias = df_dias.sort_values('Fecha')
+        
+        if len(df_dias) > 1:
+            fig4 = px.line(df_dias, x='Fecha', y='Cantidad',
+                           title='Evolución Diaria de Productos',
+                           markers=True)
+            fig4.update_layout(height=350)
+            st.plotly_chart(fig4, use_container_width=True)
+        else:
+            st.info("No hay suficientes días para mostrar evolución diaria")
+        
+        # ============ TABLA DE DATOS POR FECHA ============
+        st.subheader("📋 Tabla de Productos por Fecha")
+        
+        # Tabla resumen por fecha
+        df_resumen_fechas = df_filtrado_fechas.groupby(['fecha_completa', 'año', 'mes_nombre']).agg({
+            'ID_ProductoOfertado': 'count',
+            'precio_float': ['mean', 'min', 'max'],
+            'es_activo': 'sum'
+        }).reset_index()
+        df_resumen_fechas.columns = ['Fecha', 'Año', 'Mes', 'Cantidad', 
+                                     'Precio Promedio', 'Precio Min', 'Precio Max', 'Activos']
+        df_resumen_fechas = df_resumen_fechas.sort_values('Fecha', ascending=False)
+        
+        st.dataframe(df_resumen_fechas, use_container_width=True)
+        
+        # ============ EXPORTAR DATOS DE FECHAS ============
+        st.subheader("💾 Exportar Datos de Fechas")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            csv = df_filtrado_fechas.to_csv(index=False)
+            b64 = base64.b64encode(csv.encode()).decode()
+            href = f'<a href="data:file/csv;base64,{b64}" download="analisis_fechas.csv" style="text-decoration: none; background-color: #1f77b4; color: white; padding: 10px 20px; border-radius: 5px; display: inline-block;">📥 Descargar CSV</a>'
+            st.markdown(href, unsafe_allow_html=True)
+        
+        with col2:
+            json_str = df_filtrado_fechas.to_json(orient='records', date_format='iso')
+            b64_json = base64.b64encode(json_str.encode()).decode()
+            href_json = f'<a href="data:file/json;base64,{b64_json}" download="analisis_fechas.json" style="text-decoration: none; background-color: #28a745; color: white; padding: 10px 20px; border-radius: 5px; display: inline-block;">📥 Descargar JSON</a>'
+            st.markdown(href_json, unsafe_allow_html=True)
 
 def main():
     # Título principal
