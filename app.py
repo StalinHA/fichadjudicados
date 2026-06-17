@@ -9,8 +9,6 @@ import base64
 from io import BytesIO
 import zipfile
 import io
-import tempfile
-import os
 import re
 
 # Configuración de la página
@@ -20,6 +18,19 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# ============ LISTA COMPLETA DE MARCAS ============
+MARCAS_COMPLETAS = [
+    'TRIUMPH BOARD', 'VASTEC', 'RHINOBOX', 'LENOVO', 'EXIN', 'M4X', 'KENYA TECHNOLOGY',
+    'HP', 'MADI-TEK', 'INVESTMENT & BUSINESS SMART SBI', 'ADVANCE', 'QUI-TECH', 'TEXCOPER',
+    'WIDETEK', 'IQTOUCH', 'LG', 'ONESCREEN', 'HUAWEI', 'INOTEC', 'DELL', 'I3', 'ASUS',
+    'QUAMTU', 'KODAK', 'RICOH', 'SHARP', 'CIBER', 'HAO TECH', 'BROTHER', 'VIEWSONIC',
+    'AVISION', 'SAMSUNG', 'ALLWIYA', 'GAMEMAX', 'DYNABOOK', 'HIPPOBOX', 'CONTEX', 'INNEX',
+    'CTOUCH', 'HIKVISION', 'ZKT ECO', 'YEALINK', 'TEROS', 'SILVER VOLT', 'QOSOFT',
+    'MIMIO', 'HAITECH', 'OPTOMA TECHNOLOGY INC', 'GROWTH HACK', 'MSI', 'XEROX', 'QOMO',
+    'EPSON', 'CLEVERTOUCH', 'I2S INNOVATIVE IMAGING SOLUTIONS', 'IQ BOARD', 'GCS', 'COLORTRAC',
+    'CANON', 'BOOKEYE', 'JFA TECHNOLOGY', 'AMC', 'MAXTIC', 'SANDISK', 'KINGSTON', 'ADATA', 'NEW KRAL'
+]
 
 # Estilos CSS personalizados
 st.markdown("""
@@ -56,6 +67,23 @@ st.markdown("""
         color: #666;
         margin-top: 0.5rem;
     }
+    .metric-sub {
+        font-size: 0.8rem;
+        color: #999;
+        margin-top: 0.2rem;
+    }
+    .highlight-junio {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 1.5rem;
+        border-radius: 10px;
+        text-align: center;
+        margin: 1rem 0;
+    }
+    .highlight-junio .big-number {
+        font-size: 3rem;
+        font-weight: bold;
+    }
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
     }
@@ -71,20 +99,20 @@ st.markdown("""
         background-color: #1f77b4;
         color: white;
     }
-    .success-box {
-        background-color: #d4edda;
-        color: #155724;
-        padding: 1rem;
-        border-radius: 10px;
-        border: 1px solid #c3e6cb;
-        margin: 1rem 0;
-    }
     .info-box {
         background-color: #cce5ff;
         color: #004085;
         padding: 1rem;
         border-radius: 10px;
         border: 1px solid #b8daff;
+        margin: 1rem 0;
+    }
+    .success-box {
+        background-color: #d4edda;
+        color: #155724;
+        padding: 1rem;
+        border-radius: 10px;
+        border: 1px solid #c3e6cb;
         margin: 1rem 0;
     }
 </style>
@@ -98,13 +126,11 @@ class ProductAnalyzer:
         self.records = []
         self.source_info = ""
         self.carga_completa = False
-        self.archivos_procesados = []
         
     def load_from_github(self, repo_owner, repo_name, branch="main", folder=""):
         """Carga TODOS los archivos JSON desde GitHub, incluyendo los que estan en ZIP"""
         self.records = []
         self.carga_completa = False
-        self.archivos_procesados = []
         
         # Construir URL de la API de GitHub
         if folder:
@@ -115,7 +141,6 @@ class ProductAnalyzer:
         try:
             st.info(f"🔍 Buscando archivos en: {repo_owner}/{repo_name}")
             
-            # Obtener lista de archivos
             response = requests.get(api_url)
             if response.status_code != 200:
                 st.error(f"❌ Error al acceder al repositorio: {response.status_code}")
@@ -131,7 +156,6 @@ class ProductAnalyzer:
                     if nombre.endswith('.json') or nombre.endswith('.zip'):
                         archivos_encontrados.append(file)
                 elif file['type'] == 'dir':
-                    # Buscar en subdirectorios
                     sub_url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/contents/{file['path']}"
                     sub_response = requests.get(sub_url)
                     if sub_response.status_code == 200:
@@ -157,15 +181,13 @@ class ProductAnalyzer:
             
             for idx, file_info in enumerate(archivos_encontrados):
                 nombre = file_info['name']
-                status_text.text(f"📄 Procesando {idx+1}/{len(archivos_encontrados)}: {nombre} ({file_info['size']} bytes)")
+                status_text.text(f"📄 Procesando {idx+1}/{len(archivos_encontrados)}: {nombre}")
                 
                 try:
-                    # Descargar el archivo
                     file_response = requests.get(file_info['download_url'])
                     if file_response.status_code == 200:
                         contenido = file_response.content
                         
-                        # Verificar si es ZIP
                         if nombre.lower().endswith('.zip'):
                             registros_zip = self._procesar_zip(contenido, nombre)
                             if registros_zip:
@@ -174,7 +196,6 @@ class ProductAnalyzer:
                                 archivos_procesados += 1
                                 st.info(f"📦 {nombre}: {len(registros_zip)} registros extraidos")
                         else:
-                            # Es JSON directo
                             data = json.loads(contenido)
                             if 'records' in data:
                                 self.records.extend(data['records'])
@@ -187,7 +208,7 @@ class ProductAnalyzer:
                 
                 progress_bar.progress((idx + 1) / len(archivos_encontrados))
             
-            status_text.text(f"✅ ¡Carga completada! {archivos_procesados} archivos procesados, {total_records} registros")
+            status_text.text(f"✅ ¡Carga completada! {archivos_procesados} archivos, {total_records} registros")
             progress_bar.empty()
             
             if self.records:
@@ -217,7 +238,7 @@ class ProductAnalyzer:
                                 if 'records' in data:
                                     registros.extend(data['records'])
                         except Exception as e:
-                            st.warning(f"⚠️ Error al leer {file_name} dentro del ZIP: {str(e)[:50]}")
+                            pass
         except Exception as e:
             st.error(f"❌ Error al procesar ZIP {nombre_zip}: {str(e)}")
         
@@ -245,7 +266,7 @@ class ProductAnalyzer:
             errors='coerce'
         )
         
-        # Extraer marca
+        # Extraer marca usando la lista completa
         self.df['marca'] = self.df['descripcion'].apply(self._extract_brand)
         
         # Extraer categoria
@@ -264,24 +285,33 @@ class ProductAnalyzer:
         self.df['mes_nombre'] = self.df['fecha_publicacion_dt'].dt.strftime('%B %Y')
     
     def _extract_brand(self, descripcion):
-        """Extrae la marca de la descripcion"""
+        """Extrae la marca de la descripcion usando la lista completa"""
         if not isinstance(descripcion, str):
             return "Desconocida"
         
-        brands = {
-            'HP': ['HP', 'Hewlett-Packard'],
-            'LENOVO': ['LENOVO', 'ThinkPad'],
-            'DELL': ['DELL', 'Latitude', 'Precision'],
-            'ASUS': ['ASUS'],
-            'ACER': ['ACER'],
-            'MADI-TEK': ['MADI-TEK'],
-            'CYBER WORKPAD': ['CYBER WORKPAD']
-        }
-        
         desc_upper = descripcion.upper()
-        for brand, keywords in brands.items():
-            if any(keyword.upper() in desc_upper for keyword in keywords):
-                return brand.capitalize()
+        
+        # Primero buscar marcas que contienen espacios (ej: "TRIUMPH BOARD")
+        # Ordenar por longitud para que las más específicas coincidan primero
+        marcas_ordenadas = sorted(MARCAS_COMPLETAS, key=len, reverse=True)
+        
+        for marca in marcas_ordenadas:
+            if marca.upper() in desc_upper:
+                return marca
+        
+        # Si no se encuentra ninguna marca, buscar palabras clave genéricas
+        if "HP" in desc_upper:
+            return "HP"
+        elif "LENOVO" in desc_upper:
+            return "LENOVO"
+        elif "DELL" in desc_upper:
+            return "DELL"
+        elif "ASUS" in desc_upper:
+            return "ASUS"
+        elif "SAMSUNG" in desc_upper:
+            return "SAMSUNG"
+        elif "LG" in desc_upper:
+            return "LG"
         
         return "Otra"
     
@@ -297,6 +327,10 @@ class ProductAnalyzer:
             return "Escritorio"
         elif "SERVIDOR" in desc_upper or "SERVER" in desc_upper:
             return "Servidor"
+        elif "MONITOR" in desc_upper or "PANTALLA" in desc_upper:
+            return "Monitor"
+        elif "IMPRESORA" in desc_upper or "PRINTER" in desc_upper:
+            return "Impresora"
         else:
             return "Otro"
     
@@ -322,74 +356,43 @@ class ProductAnalyzer:
         
         return stats
 
-def mostrar_metricas(stats):
-    """Muestra las metricas principales"""
-    col1, col2, col3, col4 = st.columns(4)
+def mostrar_filtros(df):
+    """Muestra los filtros interactivos y devuelve el DataFrame filtrado"""
+    st.sidebar.markdown("---")
+    st.sidebar.header("🔍 Filtros Interactivos")
     
-    with col1:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value">{stats['total']}</div>
-            <div class="metric-label">📦 Total Productos</div>
-        </div>
-        """, unsafe_allow_html=True)
+    df_filtrado = df.copy()
     
-    with col2:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value">{len(stats['por_marca'])}</div>
-            <div class="metric-label">🏷️ Marcas</div>
-        </div>
-        """, unsafe_allow_html=True)
+    # Filtro por categoria
+    categorias = ['Todas'] + sorted(df['categoria'].unique().tolist())
+    categoria_seleccionada = st.sidebar.selectbox("📂 Filtrar por Categoria:", categorias)
     
-    with col3:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value">{len(stats['por_categoria'])}</div>
-            <div class="metric-label">📂 Categorias</div>
-        </div>
-        """, unsafe_allow_html=True)
+    if categoria_seleccionada != 'Todas':
+        df_filtrado = df_filtrado[df_filtrado['categoria'] == categoria_seleccionada]
     
-    with col4:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value">${stats['precio_promedio']:,.2f}</div>
-            <div class="metric-label">💰 Precio Promedio</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-def mostrar_graficos(stats):
-    """Muestra los graficos principales"""
-    col1, col2 = st.columns(2)
+    # Filtro por marca
+    marcas = ['Todas'] + sorted(df['marca'].unique().tolist())
+    marca_seleccionada = st.sidebar.selectbox("🏷️ Filtrar por Marca:", marcas)
     
-    with col1:
-        st.subheader("Distribucion por Marca")
-        if stats['por_marca']:
-            df_marcas = pd.DataFrame(list(stats['por_marca'].items()), 
-                                     columns=['Marca', 'Cantidad'])
-            df_marcas = df_marcas.sort_values('Cantidad', ascending=False)
-            
-            fig = px.pie(df_marcas, values='Cantidad', names='Marca',
-                        title=f'Total: {stats["total"]} productos',
-                        color_discrete_sequence=px.colors.qualitative.Set3)
-            fig.update_traces(textposition='inside', textinfo='percent+label')
-            fig.update_layout(height=450)
-            st.plotly_chart(fig, use_container_width=True)
+    if marca_seleccionada != 'Todas':
+        df_filtrado = df_filtrado[df_filtrado['marca'] == marca_seleccionada]
     
-    with col2:
-        st.subheader("Distribucion por Categoria")
-        if stats['por_categoria']:
-            df_categorias = pd.DataFrame(list(stats['por_categoria'].items()), 
-                                        columns=['Categoria', 'Cantidad'])
-            df_categorias = df_categorias.sort_values('Cantidad', ascending=False)
-            
-            fig = px.bar(df_categorias, x='Categoria', y='Cantidad',
-                        title='Productos por Categoria',
-                        color='Categoria',
-                        color_discrete_sequence=px.colors.qualitative.Set2)
-            fig.update_traces(textposition='outside')
-            fig.update_layout(height=450)
-            st.plotly_chart(fig, use_container_width=True)
+    # Filtro por estado
+    estados = ['Todos'] + sorted(df['estado_ficha'].unique().tolist())
+    estado_seleccionado = st.sidebar.selectbox("📊 Filtrar por Estado:", estados)
+    
+    if estado_seleccionado != 'Todos':
+        df_filtrado = df_filtrado[df_filtrado['estado_ficha'] == estado_seleccionado]
+    
+    # Mostrar resumen de filtros
+    st.sidebar.markdown("---")
+    st.sidebar.markdown(f"**📊 Registros mostrados:** {len(df_filtrado)}")
+    
+    if len(df_filtrado) < len(df):
+        porcentaje = (len(df_filtrado) / len(df)) * 100
+        st.sidebar.markdown(f"**Filtrados:** {porcentaje:.1f}% del total")
+    
+    return df_filtrado
 
 def mostrar_tabla_productos(df, titulo):
     """Muestra la tabla de productos con filtros"""
@@ -405,44 +408,6 @@ def mostrar_tabla_productos(df, titulo):
     
     st.dataframe(df_show, use_container_width=True, height=500)
 
-def mostrar_filtros(df):
-    """Muestra los filtros interactivos y devuelve el DataFrame filtrado"""
-    st.sidebar.markdown("---")
-    st.sidebar.header("Filtros Interactivos")
-    
-    df_filtrado = df.copy()
-    
-    # Filtro por categoria
-    categorias = ['Todas'] + sorted(df['categoria'].unique().tolist())
-    categoria_seleccionada = st.sidebar.selectbox("Filtrar por Categoria:", categorias)
-    
-    if categoria_seleccionada != 'Todas':
-        df_filtrado = df_filtrado[df_filtrado['categoria'] == categoria_seleccionada]
-    
-    # Filtro por marca
-    marcas = ['Todas'] + sorted(df['marca'].unique().tolist())
-    marca_seleccionada = st.sidebar.selectbox("Filtrar por Marca:", marcas)
-    
-    if marca_seleccionada != 'Todas':
-        df_filtrado = df_filtrado[df_filtrado['marca'] == marca_seleccionada]
-    
-    # Filtro por estado
-    estados = ['Todos'] + sorted(df['estado_ficha'].unique().tolist())
-    estado_seleccionado = st.sidebar.selectbox("Filtrar por Estado:", estados)
-    
-    if estado_seleccionado != 'Todos':
-        df_filtrado = df_filtrado[df_filtrado['estado_ficha'] == estado_seleccionado]
-    
-    # Mostrar resumen de filtros
-    st.sidebar.markdown("---")
-    st.sidebar.markdown(f"**Registros mostrados:** {len(df_filtrado)}")
-    
-    if len(df_filtrado) < len(df):
-        porcentaje = (len(df_filtrado) / len(df)) * 100
-        st.sidebar.markdown(f"**Filtrados:** {porcentaje:.1f}% del total")
-    
-    return df_filtrado
-
 def main():
     st.markdown('<h1 class="main-header">📊 Dashboard de Analisis de Productos</h1>', unsafe_allow_html=True)
     
@@ -452,23 +417,22 @@ def main():
     
     # Sidebar
     with st.sidebar:
-        st.header("Configuracion")
+        st.header("⚙️ Configuracion")
         
         st.markdown("""
         <div class="info-box">
-        <strong>Soporte para ZIP</strong><br>
+        <strong>📌 Soporte para ZIP</strong><br>
         El sistema detecta y extrae automaticamente<br>
         archivos JSON desde dentro de ZIP
         </div>
         """, unsafe_allow_html=True)
         
-        # Configuracion del repositorio
-        repo_owner = st.text_input("Owner del repositorio:", value="StalinHA")
-        repo_name = st.text_input("Nombre del repositorio:", value="fichadjudicados")
-        branch = st.text_input("Rama:", value="main")
-        folder = st.text_input("Carpeta (opcional):", value="")
+        repo_owner = st.text_input("👤 Owner del repositorio:", value="StalinHA")
+        repo_name = st.text_input("📁 Nombre del repositorio:", value="fichadjudicados")
+        branch = st.text_input("🌿 Rama:", value="main")
+        folder = st.text_input("📂 Carpeta (opcional):", value="")
         
-        if st.button("Cargar TODOS los JSON (incluye ZIP)", use_container_width=True, type="primary"):
+        if st.button("🚀 Cargar TODOS los JSON (incluye ZIP)", use_container_width=True, type="primary"):
             with st.spinner("Cargando archivos desde GitHub..."):
                 df = st.session_state.analyzer.load_from_github(repo_owner, repo_name, branch, folder)
                 if df is not None and not df.empty:
@@ -479,20 +443,18 @@ def main():
         
         st.divider()
         
-        # Mostrar informacion de carga
         if st.session_state.analyzer.carga_completa:
             st.success(f"✅ Datos cargados: {len(st.session_state.analyzer.df)} registros")
             st.info(f"📂 Fuente: {st.session_state.analyzer.source_info}")
     
     analyzer = st.session_state.analyzer
     
-    # Verificar si hay datos cargados
     if not analyzer.carga_completa or analyzer.df is None or analyzer.df.empty:
-        st.info("Haz clic en 'Cargar TODOS los JSON (incluye ZIP)' en el panel izquierdo")
+        st.info("📁 Haz clic en 'Cargar TODOS los JSON (incluye ZIP)' en el panel izquierdo")
         
-        with st.expander("Guia de uso", expanded=True):
+        with st.expander("💡 Guia de uso", expanded=True):
             st.markdown("""
-            ### Como usar este dashboard:
+            ### 🚀 Como usar este dashboard:
             
             1. Configura tu repositorio en el panel izquierdo
             2. Haz clic en "Cargar TODOS los JSON (incluye ZIP)"
@@ -500,135 +462,4 @@ def main():
                - Archivos .json directos
                - Archivos .zip que contengan .json
             
-            ### Estructura de archivos soportada:
-            
-            📁 tu-repositorio/
-            ├── 📄 archivo1.json
-            ├── 📄 archivo2.json
-            ├── 📦 249_EXT-CE-2022-5.zip
-            └── ...
-            """)
-        return
-    
-    # Obtener DataFrame
-    df = analyzer.df
-    
-    # Mostrar filtros en sidebar
-    df_filtrado = mostrar_filtros(df)
-    
-    # Obtener estadisticas
-    stats = analyzer.get_stats(df_filtrado)
-    
-    if stats is None or stats['total'] == 0:
-        st.warning("No hay datos que coincidan con los filtros seleccionados")
-        return
-    
-    # ============ SECCION JUNIO 2026 ============
-    st.subheader("RESULTADOS DE JUNIO 2026")
-    
-    df_junio = df[df['es_junio_2026'] == True]
-    
-    if not df_junio.empty:
-        stats_junio = analyzer.get_stats(df_junio)
-        
-        # Metricas de Junio
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Nuevos Productos", stats_junio['total'])
-        with col2:
-            st.metric("Marcas", len(stats_junio['por_marca']))
-        with col3:
-            st.metric("Categorias", len(stats_junio['por_categoria']))
-        with col4:
-            st.metric("Precio Promedio", f"${stats_junio['precio_promedio']:,.2f}")
-        
-        st.divider()
-        
-        # Graficos de Junio
-        col1, col2 = st.columns(2)
-        with col1:
-            if stats_junio['por_marca']:
-                df_marcas_junio = pd.DataFrame(list(stats_junio['por_marca'].items()), 
-                                               columns=['Marca', 'Cantidad'])
-                fig = px.pie(df_marcas_junio, values='Cantidad', names='Marca',
-                            title='Marcas - Junio 2026',
-                            color_discrete_sequence=px.colors.qualitative.Set3)
-                fig.update_traces(textposition='inside', textinfo='percent+label')
-                st.plotly_chart(fig, use_container_width=True)
-        
-        with col2:
-            if stats_junio['por_categoria']:
-                df_cat_junio = pd.DataFrame(list(stats_junio['por_categoria'].items()), 
-                                            columns=['Categoria', 'Cantidad'])
-                fig = px.bar(df_cat_junio, x='Categoria', y='Cantidad',
-                            title='Categorias - Junio 2026',
-                            color='Categoria', text='Cantidad')
-                fig.update_traces(textposition='outside')
-                st.plotly_chart(fig, use_container_width=True)
-        
-        st.divider()
-        
-        # Tabla de Junio
-        st.subheader("Productos Nuevos - Junio 2026")
-        mostrar_tabla_productos(df_junio, "")
-    
-    else:
-        st.warning("No se encontraron productos nuevos en Junio 2026")
-    
-    st.divider()
-    
-    # ============ PESTAÑAS PRINCIPALES ============
-    st.subheader("ANALISIS COMPLETO")
-    
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "Resumen General", 
-        "Por Marca", 
-        "Por Categoria",
-        "Datos Detallados"
-    ])
-    
-    with tab1:
-        mostrar_metricas(stats)
-        st.divider()
-        mostrar_graficos(stats)
-    
-    with tab2:
-        st.subheader("Analisis por Marca")
-        if stats['por_marca']:
-            df_marcas = pd.DataFrame(list(stats['por_marca'].items()), 
-                                     columns=['Marca', 'Cantidad'])
-            df_marcas = df_marcas.sort_values('Cantidad', ascending=False)
-            
-            fig = px.bar(df_marcas, x='Marca', y='Cantidad', 
-                        color='Marca', text='Cantidad')
-            fig.update_traces(textposition='outside')
-            fig.update_layout(height=450)
-            st.plotly_chart(fig, use_container_width=True)
-            st.dataframe(df_marcas, use_container_width=True)
-    
-    with tab3:
-        st.subheader("Analisis por Categoria")
-        if stats['por_categoria']:
-            df_categorias = pd.DataFrame(list(stats['por_categoria'].items()), 
-                                         columns=['Categoria', 'Cantidad'])
-            df_categorias = df_categorias.sort_values('Cantidad', ascending=False)
-            
-            fig = px.pie(df_categorias, values='Cantidad', names='Categoria',
-                        color_discrete_sequence=px.colors.qualitative.Set2)
-            fig.update_traces(textposition='inside', textinfo='percent+label')
-            fig.update_layout(height=450)
-            st.plotly_chart(fig, use_container_width=True)
-            st.dataframe(df_categorias, use_container_width=True)
-    
-    with tab4:
-        mostrar_tabla_productos(df_filtrado, "Todos los Productos")
-        
-        # Exportar
-        st.subheader("Exportar Datos")
-        csv = df_filtrado.to_csv(index=False)
-        b64 = base64.b64encode(csv.encode()).decode()
-        href = f'<a href="data:file/csv;base64,{b64}" download="productos.csv" style="text-decoration: none; background-color: #1f77b4; color: white; padding: 10px 20px; border-radius: 5px; display: inline-block;">📥 Descargar CSV</a>'
-        st.markdown(href, unsafe_allow_html=True)
-
-if __name__ == "__main__":
-    main()
+            ### 📂 Estructura de archivos soportada:
