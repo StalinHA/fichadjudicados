@@ -45,7 +45,7 @@ st.markdown("""
         margin-bottom: 2rem;
     }
     .metric-card {
-        background: GREEN;
+        background: white;
         padding: 1.5rem;
         border-radius: 10px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -102,6 +102,14 @@ st.markdown("""
         border-radius: 10px;
         border: 1px solid #c3e6cb;
         margin: 1rem 0;
+    }
+    .estado-activo {
+        background-color: #28a745;
+        color: white;
+        padding: 0.2rem 0.8rem;
+        border-radius: 20px;
+        display: inline-block;
+        font-weight: bold;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -234,6 +242,7 @@ class ProductAnalyzer:
         if self.df is None or self.df.empty:
             return
         
+        # Convertir fechas
         self.df['fecha_registro_dt'] = pd.to_datetime(
             self.df['fecha_registro'], 
             format='%d/%m/%Y %I:%M:%S %p',
@@ -250,16 +259,24 @@ class ProductAnalyzer:
             errors='coerce'
         )
         
+        # Extraer marca y categoria
         self.df['marca'] = self.df['descripcion'].apply(self._extract_brand)
         self.df['categoria'] = self.df['descripcion'].apply(self._extract_category)
         self.df['precio_float'] = pd.to_numeric(self.df['precio'], errors='coerce')
         
+        # ============ ESTADO ACTIVO ============
+        # Una ficha está ACTIVA si estado_ficha = "OFERTADA" Y estado_oferta = "VIGENTE"
+        self.df['es_activo'] = (self.df['estado_ficha'] == 'OFERTADA') & (self.df['estado_oferta'] == 'VIGENTE')
+        
+        # Filtrar Junio 2026
         self.df['es_junio_2026'] = (self.df['fecha_publicacion_dt'].dt.year == 2026) & \
                                    (self.df['fecha_publicacion_dt'].dt.month == 6)
         
-        self.df['mes'] = self.df['fecha_publicacion_dt'].dt.month
-        self.df['año'] = self.df['fecha_publicacion_dt'].dt.year
-        self.df['mes_nombre'] = self.df['fecha_publicacion_dt'].dt.strftime('%B %Y')
+        # Extraer año y mes para análisis de fechas
+        self.df['año_publicacion'] = self.df['fecha_publicacion_dt'].dt.year
+        self.df['mes_publicacion'] = self.df['fecha_publicacion_dt'].dt.month
+        self.df['año_mes_publicacion'] = self.df['fecha_publicacion_dt'].dt.strftime('%Y-%m')
+        self.df['mes_nombre_publicacion'] = self.df['fecha_publicacion_dt'].dt.strftime('%B %Y')
     
     def _extract_brand(self, descripcion):
         """Extrae la marca de la descripcion usando la lista completa"""
@@ -320,6 +337,8 @@ class ProductAnalyzer:
             'por_marca': df_filtered['marca'].value_counts().to_dict(),
             'por_categoria': df_filtered['categoria'].value_counts().to_dict(),
             'por_estado': df_filtered['estado_ficha'].value_counts().to_dict(),
+            'por_estado_oferta': df_filtered['estado_oferta'].value_counts().to_dict(),
+            'activos': df_filtered['es_activo'].sum(),
             'precio_promedio': df_filtered['precio_float'].mean(),
             'precio_min': df_filtered['precio_float'].min(),
             'precio_max': df_filtered['precio_float'].max(),
@@ -336,24 +355,57 @@ def mostrar_filtros(df):
     
     df_filtrado = df.copy()
     
+    # Filtro por categoria
     categorias = ['Todas'] + sorted(df['categoria'].unique().tolist())
     categoria_seleccionada = st.sidebar.selectbox("📂 Filtrar por Categoria:", categorias)
     
     if categoria_seleccionada != 'Todas':
         df_filtrado = df_filtrado[df_filtrado['categoria'] == categoria_seleccionada]
     
+    # Filtro por marca
     marcas = ['Todas'] + sorted(df['marca'].unique().tolist())
     marca_seleccionada = st.sidebar.selectbox("🏷️ Filtrar por Marca:", marcas)
     
     if marca_seleccionada != 'Todas':
         df_filtrado = df_filtrado[df_filtrado['marca'] == marca_seleccionada]
     
-    estados = ['Todos'] + sorted(df['estado_ficha'].unique().tolist())
+    # Filtro por estado
+    estados = ['Todos', 'Activos (OFERTADA + VIGENTE)'] + sorted(df['estado_ficha'].unique().tolist())
     estado_seleccionado = st.sidebar.selectbox("📊 Filtrar por Estado:", estados)
     
-    if estado_seleccionado != 'Todos':
+    if estado_seleccionado == 'Activos (OFERTADA + VIGENTE)':
+        df_filtrado = df_filtrado[df_filtrado['es_activo'] == True]
+    elif estado_seleccionado != 'Todos':
         df_filtrado = df_filtrado[df_filtrado['estado_ficha'] == estado_seleccionado]
     
+    # Filtro por rango de fechas
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📅 Filtro por Fecha de Publicación")
+    
+    if not df['fecha_publicacion_dt'].isna().all():
+        fecha_min = df['fecha_publicacion_dt'].min().date()
+        fecha_max = df['fecha_publicacion_dt'].max().date()
+        
+        fecha_inicio = st.sidebar.date_input(
+            "Fecha Inicio:",
+            value=fecha_min,
+            min_value=fecha_min,
+            max_value=fecha_max
+        )
+        
+        fecha_fin = st.sidebar.date_input(
+            "Fecha Fin:",
+            value=fecha_max,
+            min_value=fecha_min,
+            max_value=fecha_max
+        )
+        
+        df_filtrado = df_filtrado[
+            (df_filtrado['fecha_publicacion_dt'].dt.date >= fecha_inicio) & 
+            (df_filtrado['fecha_publicacion_dt'].dt.date <= fecha_fin)
+        ]
+    
+    # Mostrar resumen de filtros
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"**📊 Registros mostrados:** {len(df_filtrado)}")
     
@@ -368,14 +420,82 @@ def mostrar_tabla_productos(df, titulo):
     st.subheader(titulo)
     
     columnas = ['ID_ProductoOfertado', 'descripcion', 'marca', 'categoria', 
-                'precio', 'estado_ficha', 'fecha_publicacion']
+                'precio', 'estado_ficha', 'estado_oferta', 'fecha_publicacion']
     
     df_show = df[columnas].copy()
     df_show['descripcion'] = df_show['descripcion'].str[:150] + '...'
     df_show.columns = ['ID', 'Descripcion', 'Marca', 'Categoria', 
-                       'Precio (USD)', 'Estado', 'Fecha Publicacion']
+                       'Precio (USD)', 'Estado Ficha', 'Estado Oferta', 'Fecha Publicacion']
     
     st.dataframe(df_show, use_container_width=True, height=500)
+
+def mostrar_analisis_fechas(df):
+    """Muestra el análisis de fechas por año y mes"""
+    st.subheader("📅 Análisis de Productos por Fecha de Publicación")
+    
+    # Crear columnas para año y mes
+    df_fechas = df.copy()
+    df_fechas['año'] = df_fechas['fecha_publicacion_dt'].dt.year
+    df_fechas['mes'] = df_fechas['fecha_publicacion_dt'].dt.month
+    df_fechas['mes_nombre'] = df_fechas['fecha_publicacion_dt'].dt.strftime('%B')
+    
+    # Agrupar por año y mes
+    df_agrupado = df_fechas.groupby(['año', 'mes', 'mes_nombre']).agg({
+        'ID_ProductoOfertado': 'count',
+        'precio_float': ['mean', 'min', 'max'],
+        'es_activo': 'sum'
+    }).reset_index()
+    
+    df_agrupado.columns = ['Año', 'Mes', 'Mes Nombre', 'Total Productos', 
+                           'Precio Promedio', 'Precio Min', 'Precio Max', 'Activos']
+    
+    # Mostrar tabla
+    st.dataframe(df_agrupado, use_container_width=True)
+    
+    # Gráfico de evolución por mes
+    st.subheader("📈 Evolución de Productos por Mes")
+    
+    fig = px.line(df_agrupado, x='Mes Nombre', y='Total Productos',
+                  title='Cantidad de Productos por Mes',
+                  labels={'Total Productos': 'Cantidad', 'Mes Nombre': 'Mes'},
+                  markers=True)
+    fig.update_layout(height=400)
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Gráfico de barras por año
+    st.subheader("📊 Productos por Año")
+    
+    df_anios = df_agrupado.groupby('Año').agg({'Total Productos': 'sum'}).reset_index()
+    
+    fig = px.bar(df_anios, x='Año', y='Total Productos',
+                 title='Productos por Año',
+                 color='Año', text='Total Productos')
+    fig.update_traces(textposition='outside')
+    fig.update_layout(height=350)
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Gráfico de distribución por año y mes (heatmap)
+    st.subheader("🗓️ Mapa de Calor - Productos por Año y Mes")
+    
+    pivot_df = df_agrupado.pivot_table(
+        index='Año', 
+        columns='Mes', 
+        values='Total Productos',
+        fill_value=0
+    )
+    
+    # Renombrar meses
+    meses_nombres = {1: 'Ene', 2: 'Feb', 3: 'Mar', 4: 'Abr', 5: 'May', 6: 'Jun',
+                     7: 'Jul', 8: 'Ago', 9: 'Sep', 10: 'Oct', 11: 'Nov', 12: 'Dic'}
+    pivot_df.columns = [meses_nombres.get(m, m) for m in pivot_df.columns]
+    
+    fig = px.imshow(pivot_df, 
+                    title='Mapa de Calor - Productos por Año y Mes',
+                    labels=dict(x="Mes", y="Año", color="Cantidad"),
+                    color_continuous_scale='Viridis',
+                    aspect="auto")
+    fig.update_layout(height=400)
+    st.plotly_chart(fig, use_container_width=True)
 
 def main():
     st.markdown('<h1 class="main-header">📊 Dashboard de Analisis de Productos</h1>', unsafe_allow_html=True)
@@ -481,9 +601,9 @@ def main():
         with col5:
             st.markdown(f"""
             <div class="metric-card">
-                <div class="metric-value">${stats_junio['precio_max']:,.2f}</div>
-                <div class="metric-label">💰 Precio Maximo</div>
-                <div class="metric-sub">Mediana: ${stats_junio['precio_mediana']:,.2f}</div>
+                <div class="metric-value">{stats_junio['activos']}</div>
+                <div class="metric-label">✅ Fichas Activas</div>
+                <div class="metric-sub">OFERTADA + VIGENTE</div>
             </div>
             """, unsafe_allow_html=True)
         
@@ -544,22 +664,23 @@ def main():
     
     st.divider()
     
-    # ============ ANALISIS COMPLETO ============
+    # ============ PESTAÑAS PRINCIPALES ============
     st.markdown("""
     <div style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); padding: 1rem; border-radius: 10px; margin: 1rem 0;">
         <h2 style="color: white; text-align: center; margin: 0;">📊 ANALISIS COMPLETO DE TODOS LOS PRODUCTOS</h2>
     </div>
     """, unsafe_allow_html=True)
     
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📊 Resumen General", 
         "🏷️ Analisis por Marca", 
         "📂 Analisis por Categoria",
+        "📅 Analisis por Fechas",
         "📋 Datos Detallados"
     ])
     
     with tab1:
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5 = st.columns(5)
         
         with col1:
             st.markdown(f"""
@@ -590,6 +711,15 @@ def main():
             <div class="metric-card">
                 <div class="metric-value">${stats['precio_promedio']:,.2f}</div>
                 <div class="metric-label">💰 Precio Promedio</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col5:
+            st.markdown(f"""
+            <div class="metric-card" style="background: #28a745; color: white;">
+                <div class="metric-value" style="color: white;">{stats['activos']}</div>
+                <div class="metric-label" style="color: white;">✅ Fichas Activas</div>
+                <div class="metric-sub" style="color: rgba(255,255,255,0.8);">OFERTADA + VIGENTE</div>
             </div>
             """, unsafe_allow_html=True)
         
@@ -655,6 +785,9 @@ def main():
             st.dataframe(df_categorias, use_container_width=True)
     
     with tab4:
+        mostrar_analisis_fechas(df_filtrado)
+    
+    with tab5:
         mostrar_tabla_productos(df_filtrado, "Todos los Productos")
         
         st.subheader("💾 Exportar Datos Completos")
