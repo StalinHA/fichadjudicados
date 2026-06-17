@@ -11,14 +11,12 @@ import zipfile
 import io
 import re
 
-# Configuración de la página
+# Configuración de la página - CORREGIDO
 st.set_page_config(
-    page_config=st.PageConfig(
-        page_title="Dashboard de Análisis de Productos",
-        page_icon="📊",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
+    page_title="Dashboard de Análisis de Productos",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 # ============ LISTA COMPLETA DE MARCAS ============
@@ -288,7 +286,7 @@ class ProductAnalyzer:
         if self.df is None or self.df.empty:
             return
         
-        # Convertir fechas - IMPORTANTE: manejar el formato exacto
+        # Convertir fechas
         self.df['fecha_registro_dt'] = pd.to_datetime(
             self.df['fecha_registro'], 
             format='%d/%m/%Y %I:%M:%S %p',
