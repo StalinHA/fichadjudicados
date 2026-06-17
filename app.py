@@ -112,7 +112,7 @@ class GitHubLoader:
             if response.status_code == 200:
                 return response.json()
             elif response.status_code == 404:
-                st.warning(f"No se encontró el repositorio o la ruta. Verifica que el repositorio sea público.")
+                st.warning("No se encontró el repositorio o la ruta. Verifica que el repositorio sea público.")
                 return None
             else:
                 st.error(f"Error al acceder al repositorio: {response.status_code}")
@@ -230,7 +230,7 @@ class ProductAnalyzer:
             
             progress_bar.progress((idx + 1) / len(json_files))
         
-        status_text.text(f"✅ ¡Carga completada!")
+        status_text.text("✅ ¡Carga completada!")
         progress_bar.empty()
         
         self.records = all_records
@@ -263,7 +263,7 @@ class ProductAnalyzer:
             
             progress_bar.progress((idx + 1) / len(urls))
         
-        status_text.text(f"✅ ¡Carga completada!")
+        status_text.text("✅ ¡Carga completada!")
         progress_bar.empty()
         
         self.records = all_records
@@ -441,7 +441,7 @@ def create_dashboard():
             
             urls_text = st.text_area(
                 "URLs de archivos JSON (una por línea):",
-                placeholder="https://raw.githubusercontent.com/StalinHA/fichadjudicados/main/archivo1.json\nhttps://raw.githubusercontent.com/StalinHA/fichadjudicados/main/archivo2.json",
+                placeholder="https://raw.githubusercontent.com/StalinHA/fichadjudicados/main/archivo1.json",
                 height=150
             )
             
@@ -494,7 +494,7 @@ def main():
             
             #### Opción 1: Cargar desde repositorio GitHub (Recomendado)
             1. En el panel izquierdo, selecciona "🌐 GitHub - Repositorio"
-            2. La URL de tu repositorio ya está preconfigurada: `https://github.com/StalinHA/fichadjudicados`
+            2. La URL de tu repositorio ya está preconfigurada
             3. Haz clic en "🔍 Buscar y Cargar JSON"
             
             #### Opción 2: Cargar desde URLs específicas
@@ -503,15 +503,185 @@ def main():
             3. Haz clic en "📥 Cargar desde URLs"
             
             ### 📋 Formato de archivos JSON:
-            ```json
-            {
-                "records": [
-                    {
-                        "ID_ProductoOfertado": "12345",
-                        "descripcion": "COMPUTADORA PORTATIL...",
-                        "precio": "1800.00",
-                        "fecha_registro": "09/06/2026 11:35:03 p. m.",
-                        "fecha_publicacion": "13/09/2025 12:00:00 a. m."
-                    }
-                ]
-            }
+            Los archivos deben tener la estructura con "records"
+            """)
+        return
+    
+    # Aplicar filtros seleccionados
+    df_filtrado = analyzer.df.copy()
+    
+    if marca_seleccionada and marca_seleccionada != 'Todas':
+        df_filtrado = df_filtrado[df_filtrado['marca'] == marca_seleccionada]
+    
+    if categoria_seleccionada and categoria_seleccionada != 'Todas':
+        df_filtrado = df_filtrado[df_filtrado['categoria'] == categoria_seleccionada]
+    
+    # Mostrar fuente de datos
+    if analyzer.source_info:
+        st.info(f"📂 Datos cargados desde: {analyzer.source_info}")
+    
+    # Obtener estadísticas de Junio 2026
+    stats_junio = analyzer.get_monthly_stats()
+    
+    if stats_junio and stats_junio['total'] > 0:
+        # Métricas principales
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value">{stats_junio['total']}</div>
+                <div class="metric-label">📦 Nuevos productos (Junio 2026)</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value">{len(stats_junio['por_marca'])}</div>
+                <div class="metric-label">🏷️ Marcas diferentes</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col3:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value">{len(stats_junio['por_categoria'])}</div>
+                <div class="metric-label">📂 Categorías</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col4:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value">${stats_junio['precio_promedio']:.2f}</div>
+                <div class="metric-label">💰 Precio promedio</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.divider()
+        
+        # Gráficos
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("📊 Distribución por Marca")
+            if stats_junio['por_marca']:
+                df_marcas = pd.DataFrame(list(stats_junio['por_marca'].items()), 
+                                         columns=['Marca', 'Cantidad'])
+                fig = px.pie(df_marcas, values='Cantidad', names='Marca', 
+                            title=f'Total: {stats_junio["total"]} productos',
+                            color_discrete_sequence=px.colors.qualitative.Set3)
+                fig.update_traces(textposition='inside', textinfo='percent+label')
+                fig.update_layout(height=400)
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No hay datos de marcas para mostrar")
+        
+        with col2:
+            st.subheader("📂 Distribución por Categoría")
+            if stats_junio['por_categoria']:
+                df_categorias = pd.DataFrame(list(stats_junio['por_categoria'].items()), 
+                                            columns=['Categoría', 'Cantidad'])
+                fig = px.bar(df_categorias, x='Categoría', y='Cantidad', 
+                            title='Productos por Categoría',
+                            color='Categoría',
+                            color_discrete_sequence=px.colors.qualitative.Set2)
+                fig.update_layout(height=400)
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("No hay datos de categorías para mostrar")
+        
+        # Tabla de detalle
+        st.subheader("📋 Detalle de Productos Nuevos (Junio 2026)")
+        
+        df_junio = stats_junio['dataframe']
+        
+        # Mostrar tabla con columnas relevantes
+        columnas_mostrar = ['ID_ProductoOfertado', 'descripcion', 'marca', 'categoria', 
+                           'precio', 'estado_ficha', 'fecha_publicacion']
+        
+        # Truncar descripción para mejor visualización
+        df_show = df_junio[columnas_mostrar].copy()
+        df_show['descripcion'] = df_show['descripcion'].str[:100] + '...'
+        
+        st.dataframe(df_show, use_container_width=True, height=400)
+        
+        # Estadísticas adicionales
+        st.subheader("📈 Análisis de Precios")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("💰 Precio Mínimo", f"${stats_junio['precio_min']:.2f}")
+        with col2:
+            st.metric("💰 Precio Máximo", f"${stats_junio['precio_max']:.2f}")
+        with col3:
+            st.metric("💰 Precio Promedio", f"${stats_junio['precio_promedio']:.2f}")
+        
+        # Gráfico de precios por marca
+        if stats_junio['por_marca']:
+            df_precios_marca = df_junio.groupby('marca')['precio_float'].agg(['mean', 'count']).reset_index()
+            df_precios_marca.columns = ['Marca', 'Precio Promedio', 'Cantidad']
+            
+            fig = px.scatter(df_precios_marca, x='Marca', y='Precio Promedio', 
+                           size='Cantidad', color='Marca',
+                           title='Precio Promedio por Marca',
+                           labels={'Precio Promedio': 'Precio Promedio (USD)'},
+                           color_discrete_sequence=px.colors.qualitative.Set1)
+            fig.update_layout(height=400)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # Exportar datos
+        st.subheader("💾 Exportar Datos")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            csv = df_junio.to_csv(index=False)
+            b64 = base64.b64encode(csv.encode()).decode()
+            href = f'<a href="data:file/csv;base64,{b64}" download="productos_junio_2026.csv" style="text-decoration: none; background-color: #1f77b4; color: white; padding: 10px 20px; border-radius: 5px; display: inline-block;">📥 Descargar CSV</a>'
+            st.markdown(href, unsafe_allow_html=True)
+        
+        with col2:
+            # Convertir a JSON
+            json_str = df_junio.to_json(orient='records', date_format='iso')
+            b64_json = base64.b64encode(json_str.encode()).decode()
+            href_json = f'<a href="data:file/json;base64,{b64_json}" download="productos_junio_2026.json" style="text-decoration: none; background-color: #28a745; color: white; padding: 10px 20px; border-radius: 5px; display: inline-block;">📥 Descargar JSON</a>'
+            st.markdown(href_json, unsafe_allow_html=True)
+        
+        # Mostrar estadísticas adicionales
+        with st.expander("📊 Estadísticas Detalladas"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("**Distribución por Estado:**")
+                if stats_junio['por_estado']:
+                    df_estado = pd.DataFrame(list(stats_junio['por_estado'].items()), 
+                                            columns=['Estado', 'Cantidad'])
+                    st.dataframe(df_estado, use_container_width=True)
+            
+            with col2:
+                st.write("**Resumen de Precios por Categoría:**")
+                df_precios_cat = df_junio.groupby('categoria')['precio_float'].agg(['mean', 'min', 'max', 'count']).reset_index()
+                df_precios_cat.columns = ['Categoría', 'Precio Promedio', 'Precio Mínimo', 'Precio Máximo', 'Cantidad']
+                st.dataframe(df_precios_cat.round(2), use_container_width=True)
+        
+    else:
+        st.warning("📊 No se encontraron productos nuevos en Junio 2026")
+        
+        # Mostrar estadísticas generales
+        st.subheader("📈 Estadísticas Generales")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total de productos", len(analyzer.df))
+        with col2:
+            st.metric("Marcas diferentes", len(analyzer.df['marca'].unique()))
+        with col3:
+            st.metric("Categorías", len(analyzer.df['categoria'].unique()))
+        
+        # Mostrar todos los productos disponibles
+        st.subheader("📋 Todos los productos disponibles")
+        st.dataframe(analyzer.df, use_container_width=True, height=400)
+
+if __name__ == "__main__":
+    main()
