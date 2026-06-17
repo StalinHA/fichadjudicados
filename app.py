@@ -48,10 +48,9 @@ CATEGORIAS_OFICIALES = {
     '11751': 'DISPOSITIVOS DE ALMACENAMIENTO INTERNO'
 }
 
-# Lista de nombres de categorías para búsqueda
 CATEGORIAS_NOMBRES = list(CATEGORIAS_OFICIALES.values())
 
-# Estilos CSS personalizados
+# Estilos CSS
 st.markdown("""
 <style>
     .main-header {
@@ -152,14 +151,11 @@ def convertir_fecha(fecha_str):
     try:
         # Reemplazar "a. m." por "AM" y "p. m." por "PM"
         fecha_limpia = fecha_str.replace('a. m.', 'AM').replace('p. m.', 'PM')
-        # Intentar convertir con el formato correcto
         return pd.to_datetime(fecha_limpia, format='%d/%m/%Y %I:%M:%S %p', errors='coerce')
     except:
         return pd.NaT
 
 class ProductAnalyzer:
-    """Clase principal para el analisis de productos"""
-    
     def __init__(self):
         self.df = None
         self.records = []
@@ -285,7 +281,7 @@ class ProductAnalyzer:
         if self.df is None or self.df.empty:
             return
         
-        # Convertir fechas usando la función convertir_fecha
+        # Convertir fechas
         self.df['fecha_registro_dt'] = self.df['fecha_registro'].apply(convertir_fecha)
         self.df['fecha_publicacion_dt'] = self.df['fecha_publicacion'].apply(convertir_fecha)
         self.df['fecha_adjudicacion_dt'] = self.df['fecha_adjudicacion'].apply(convertir_fecha)
@@ -293,14 +289,14 @@ class ProductAnalyzer:
         # Extraer marca
         self.df['marca'] = self.df['descripcion'].apply(self._extract_brand)
         
-        # Extraer categoria usando las categorías oficiales
+        # Extraer categoria
         self.df['categoria'] = self.df['descripcion'].apply(self._extract_category_oficial)
         self.df['categoria_codigo'] = self.df['categoria'].apply(self._get_categoria_codigo)
         
         # Convertir precio
         self.df['precio_float'] = pd.to_numeric(self.df['precio'], errors='coerce')
         
-        # Estado activo: estado_ficha = "OFERTADA" Y estado_oferta = "VIGENTE"
+        # Estado activo
         self.df['es_activo'] = (self.df['estado_ficha'] == 'OFERTADA') & (self.df['estado_oferta'] == 'VIGENTE')
         
         # Filtrar Junio 2026
@@ -313,12 +309,8 @@ class ProductAnalyzer:
         self.df['año_mes_publicacion'] = self.df['fecha_publicacion_dt'].dt.strftime('%Y-%m')
         self.df['mes_nombre_publicacion'] = self.df['fecha_publicacion_dt'].dt.strftime('%B %Y')
         self.df['dia_publicacion'] = self.df['fecha_publicacion_dt'].dt.day
-        
-        # Mostrar información de depuración
-        st.sidebar.success(f"📅 Fechas procesadas: {self.df['fecha_publicacion_dt'].notna().sum()} registros con fecha válida")
     
     def _extract_brand(self, descripcion):
-        """Extrae la marca de la descripcion usando la lista completa"""
         if not isinstance(descripcion, str):
             return "Desconocida"
         
@@ -345,18 +337,15 @@ class ProductAnalyzer:
         return "Otra"
     
     def _extract_category_oficial(self, descripcion):
-        """Extrae la categoria usando las categorías oficiales"""
         if not isinstance(descripcion, str):
             return "Sin Categoria"
         
         desc_upper = descripcion.upper()
         
-        # Buscar por nombre de categoría
         for nombre in CATEGORIAS_NOMBRES:
             if nombre.upper() in desc_upper:
                 return nombre
         
-        # Si no encuentra, usar la detección genérica
         if "PORTATIL" in desc_upper or "NOTEBOOK" in desc_upper or "LAPTOP" in desc_upper:
             return "COMPUTADORA PORTATIL"
         elif "ESCRITORIO" in desc_upper or "DESKTOP" in desc_upper or "TORRE" in desc_upper:
@@ -380,14 +369,12 @@ class ProductAnalyzer:
         return "Otro"
     
     def _get_categoria_codigo(self, categoria):
-        """Obtiene el código de la categoría"""
         for codigo, nombre in CATEGORIAS_OFICIALES.items():
             if nombre == categoria:
                 return codigo
         return ""
     
     def get_stats(self, df_filtered=None):
-        """Obtiene estadisticas del DataFrame filtrado"""
         if df_filtered is None:
             df_filtered = self.df
         
@@ -411,27 +398,23 @@ class ProductAnalyzer:
         return stats
 
 def mostrar_filtros(df):
-    """Muestra los filtros interactivos y devuelve el DataFrame filtrado"""
     st.sidebar.markdown("---")
     st.sidebar.header("🔍 Filtros Interactivos")
     
     df_filtrado = df.copy()
     
-    # Filtro por categoria (usando las categorías oficiales)
     categorias = ['Todas'] + sorted(df['categoria'].unique().tolist())
     categoria_seleccionada = st.sidebar.selectbox("📂 Filtrar por Categoria:", categorias)
     
     if categoria_seleccionada != 'Todas':
         df_filtrado = df_filtrado[df_filtrado['categoria'] == categoria_seleccionada]
     
-    # Filtro por marca
     marcas = ['Todas'] + sorted(df['marca'].unique().tolist())
     marca_seleccionada = st.sidebar.selectbox("🏷️ Filtrar por Marca:", marcas)
     
     if marca_seleccionada != 'Todas':
         df_filtrado = df_filtrado[df_filtrado['marca'] == marca_seleccionada]
     
-    # Filtro por estado
     estados = ['Todos', '✅ Activos (OFERTADA + VIGENTE)'] + sorted(df['estado_ficha'].unique().tolist())
     estado_seleccionado = st.sidebar.selectbox("📊 Filtrar por Estado:", estados)
     
@@ -440,38 +423,6 @@ def mostrar_filtros(df):
     elif estado_seleccionado != 'Todos':
         df_filtrado = df_filtrado[df_filtrado['estado_ficha'] == estado_seleccionado]
     
-    # Filtro por rango de fechas
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("📅 Filtro por Fecha de Publicación")
-    
-    # Verificar que hay fechas válidas
-    fechas_validas = df['fecha_publicacion_dt'].dropna()
-    if not fechas_validas.empty:
-        fecha_min = fechas_validas.min().date()
-        fecha_max = fechas_validas.max().date()
-        
-        fecha_inicio = st.sidebar.date_input(
-            "Fecha Inicio:",
-            value=fecha_min,
-            min_value=fecha_min,
-            max_value=fecha_max
-        )
-        
-        fecha_fin = st.sidebar.date_input(
-            "Fecha Fin:",
-            value=fecha_max,
-            min_value=fecha_min,
-            max_value=fecha_max
-        )
-        
-        df_filtrado = df_filtrado[
-            (df_filtrado['fecha_publicacion_dt'].dt.date >= fecha_inicio) & 
-            (df_filtrado['fecha_publicacion_dt'].dt.date <= fecha_fin)
-        ]
-    else:
-        st.sidebar.warning("⚠️ No hay fechas válidas para filtrar")
-    
-    # Mostrar resumen de filtros
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"**📊 Registros mostrados:** {len(df_filtrado)}")
     
@@ -482,7 +433,6 @@ def mostrar_filtros(df):
     return df_filtrado
 
 def mostrar_tabla_productos(df, titulo):
-    """Muestra la tabla de productos con filtros"""
     st.subheader(titulo)
     
     columnas = ['ID_ProductoOfertado', 'descripcion', 'marca', 'categoria', 
@@ -496,34 +446,29 @@ def mostrar_tabla_productos(df, titulo):
     st.dataframe(df_show, use_container_width=True, height=500)
 
 def mostrar_analisis_fechas(df):
-    """Muestra el análisis de fechas por año y mes"""
     st.subheader("📅 Análisis de Productos por Fecha de Publicación")
     
-    # Verificar que hay datos
     if df.empty:
         st.warning("No hay datos para mostrar en el análisis de fechas")
         return
     
-    # Verificar que la columna de fecha existe
     if 'fecha_publicacion_dt' not in df.columns:
         st.error("No se encontró la columna de fecha de publicación")
         return
     
-    # Eliminar filas con fechas nulas
     df_fechas = df.dropna(subset=['fecha_publicacion_dt']).copy()
     
     if df_fechas.empty:
         st.warning("No hay fechas de publicación válidas en los datos")
         return
     
-    # Crear columnas para año y mes
     df_fechas['año'] = df_fechas['fecha_publicacion_dt'].dt.year
     df_fechas['mes'] = df_fechas['fecha_publicacion_dt'].dt.month
     df_fechas['mes_nombre'] = df_fechas['fecha_publicacion_dt'].dt.strftime('%B')
     df_fechas['dia'] = df_fechas['fecha_publicacion_dt'].dt.day
     df_fechas['fecha_completa'] = df_fechas['fecha_publicacion_dt'].dt.strftime('%d/%m/%Y')
     
-    # ============ FILTROS INTERACTIVOS PARA FECHAS ============
+    # Filtros
     col1, col2, col3 = st.columns(3)
     
     with col1:
@@ -556,7 +501,7 @@ def mostrar_analisis_fechas(df):
     
     st.info(f"📊 Mostrando {len(df_filtrado_fechas)} registros")
     
-    # ============ MÉTRICAS DE FECHAS ============
+    # Métricas
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
@@ -577,7 +522,6 @@ def mostrar_analisis_fechas(df):
     
     st.divider()
     
-    # ============ GRÁFICOS ============
     if not df_filtrado_fechas.empty:
         # Gráfico 1: Productos por Año
         st.subheader("📊 Productos por Año")
@@ -593,7 +537,7 @@ def mostrar_analisis_fechas(df):
         fig1.update_layout(height=350)
         st.plotly_chart(fig1, use_container_width=True)
         
-        # Gráfico 2: Productos por Mes (con año seleccionado o todos)
+        # Gráfico 2: Productos por Mes
         st.subheader("📈 Productos por Mes")
         
         if año_seleccionado != 'Todos':
@@ -610,7 +554,6 @@ def mostrar_analisis_fechas(df):
             fig2.update_layout(height=350)
             st.plotly_chart(fig2, use_container_width=True)
         else:
-            # Agrupar por año y mes
             df_meses_anios = df_filtrado_fechas.groupby(['año', 'mes', 'mes_nombre']).agg({
                 'ID_ProductoOfertado': 'count'
             }).reset_index()
@@ -622,7 +565,7 @@ def mostrar_analisis_fechas(df):
             fig2.update_layout(height=350)
             st.plotly_chart(fig2, use_container_width=True)
         
-        # Gráfico 3: Distribución por Categoría (en fechas)
+        # Gráfico 3: Distribución por Categoría
         st.subheader("📂 Distribución por Categoría - Fechas")
         df_cat_fechas = df_filtrado_fechas['categoria'].value_counts().reset_index()
         df_cat_fechas.columns = ['Categoría', 'Cantidad']
@@ -634,28 +577,9 @@ def mostrar_analisis_fechas(df):
         fig3.update_layout(height=400)
         st.plotly_chart(fig3, use_container_width=True)
         
-        # Gráfico 4: Evolución diaria (si hay suficientes días)
-        st.subheader("📊 Evolución Diaria")
-        
-        df_dias = df_filtrado_fechas.groupby('fecha_completa').agg({
-            'ID_ProductoOfertado': 'count'
-        }).reset_index()
-        df_dias.columns = ['Fecha', 'Cantidad']
-        df_dias = df_dias.sort_values('Fecha')
-        
-        if len(df_dias) > 1:
-            fig4 = px.line(df_dias, x='Fecha', y='Cantidad',
-                           title='Evolución Diaria de Productos',
-                           markers=True)
-            fig4.update_layout(height=350)
-            st.plotly_chart(fig4, use_container_width=True)
-        else:
-            st.info("No hay suficientes días para mostrar evolución diaria")
-        
-        # ============ TABLA DE DATOS POR FECHA ============
+        # Tabla resumen
         st.subheader("📋 Tabla de Productos por Fecha")
         
-        # Tabla resumen por fecha
         df_resumen_fechas = df_filtrado_fechas.groupby(['fecha_completa', 'año', 'mes_nombre']).agg({
             'ID_ProductoOfertado': 'count',
             'precio_float': ['mean', 'min', 'max'],
@@ -667,7 +591,7 @@ def mostrar_analisis_fechas(df):
         
         st.dataframe(df_resumen_fechas, use_container_width=True)
         
-        # ============ EXPORTAR DATOS DE FECHAS ============
+        # Exportar
         st.subheader("💾 Exportar Datos de Fechas")
         col1, col2 = st.columns(2)
         
@@ -684,7 +608,6 @@ def mostrar_analisis_fechas(df):
             st.markdown(href_json, unsafe_allow_html=True)
 
 def main():
-    # Título principal
     st.markdown('<h1 class="main-header">📊 Dashboard de Analisis de Productos</h1>', unsafe_allow_html=True)
     
     if 'analyzer' not in st.session_state:
