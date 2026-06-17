@@ -74,6 +74,9 @@ st.markdown("""
     .partial-match {background-color: #ffc107; color: #333; padding: 0.2rem 0.5rem; border-radius: 4px;}
     .no-match {background-color: #dc3545; color: white; padding: 0.2rem 0.5rem; border-radius: 4px;}
     .search-container {background: #f8f9fa; padding: 1.5rem; border-radius: 10px; margin: 1rem 0;}
+    .badge-activo {background: #28a745; color: white; padding: 0.2rem 0.8rem; border-radius: 20px; font-weight: bold; font-size: 0.8rem;}
+    .badge-inactivo {background: #dc3545; color: white; padding: 0.2rem 0.8rem; border-radius: 20px; font-weight: bold; font-size: 0.8rem;}
+    .badge-junio {background: #764ba2; color: white; padding: 0.2rem 0.8rem; border-radius: 20px; font-weight: bold; font-size: 0.8rem;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -87,57 +90,71 @@ def convertir_fecha(fecha_str):
     except:
         return pd.NaT
 
-# ============ FUNCION DE BUSQUEDA AVANZADA ============
-def buscar_numero_parte(df, numero_parte, umbral=60):
+# ============ FUNCION DE BUSQUEDA AVANZADA MEJORADA ============
+def normalizar_texto(texto):
+    """Normaliza texto para búsqueda: elimina espacios, mayúsculas, caracteres especiales"""
+    if not isinstance(texto, str):
+        return ""
+    # Eliminar espacios, convertir a mayúsculas
+    texto = texto.upper().strip()
+    # Eliminar caracteres especiales comunes pero mantener letras y números
+    texto = re.sub(r'[^A-Z0-9]', '', texto)
+    return texto
+
+def buscar_numero_parte(df, numero_parte, umbral=50):
     """
-    Busca un número de parte en la descripción y calcula coincidencias
-    Retorna: DataFrame con resultados ordenados por coincidencia
+    Busca un número de parte en la descripción con múltiples estrategias
     """
     if df is None or df.empty or not numero_parte:
         return None
     
-    numero_parte = numero_parte.upper().strip()
+    numero_parte_original = numero_parte.strip()
+    numero_parte_normalizado = normalizar_texto(numero_parte_original)
+    
     resultados = []
     
     for idx, row in df.iterrows():
-        descripcion = str(row['descripcion']).upper()
+        descripcion = str(row['descripcion'])
+        descripcion_normalizada = normalizar_texto(descripcion)
         
-        # Buscar coincidencia exacta
-        if numero_parte in descripcion:
+        # Estrategia 1: Búsqueda exacta del número normalizado
+        if numero_parte_normalizado and numero_parte_normalizado in descripcion_normalizada:
             coincidencia = 100
-            posicion = descripcion.find(numero_parte)
+            contexto = descripcion
         else:
-            # Buscar coincidencia parcial
-            partes = numero_parte.split()
+            # Estrategia 2: Buscar cada palabra del número de parte por separado
+            partes = numero_parte_original.split()
             max_coincidencia = 0
-            posicion = -1
+            mejor_contexto = descripcion
             
-            # Buscar cada parte por separado
             for parte in partes:
-                if len(parte) >= 3 and parte in descripcion:
-                    coincidencia_parcial = (len(parte) / len(numero_parte)) * 100
+                parte_norm = normalizar_texto(parte)
+                if len(parte_norm) >= 3 and parte_norm in descripcion_normalizada:
+                    coincidencia_parcial = (len(parte_norm) / len(numero_parte_normalizado)) * 100
                     if coincidencia_parcial > max_coincidencia:
                         max_coincidencia = coincidencia_parcial
-                        posicion = descripcion.find(parte)
+                        mejor_contexto = descripcion
             
-            # Si no hay coincidencia parcial, buscar caracteres similares
+            # Estrategia 3: Usar SequenceMatcher para comparar cadenas completas
             if max_coincidencia == 0:
-                # Usar SequenceMatcher para comparar cadenas completas
-                matcher = SequenceMatcher(None, numero_parte, descripcion)
+                matcher = SequenceMatcher(None, numero_parte_normalizado, descripcion_normalizada)
                 max_coincidencia = matcher.ratio() * 100
-                posicion = -1
+                mejor_contexto = descripcion
             
-            coincidencia = max_coincidencia
+            # Estrategia 4: Buscar subcadenas de 4+ caracteres del número de parte
+            if max_coincidencia < 50 and len(numero_parte_normalizado) >= 4:
+                for i in range(len(numero_parte_normalizado) - 3):
+                    subcadena = numero_parte_normalizado[i:i+4]
+                    if subcadena in descripcion_normalizada:
+                        max_coincidencia = max(max_coincidencia, 60)
+                        mejor_contexto = descripcion
+                        break
+            
+            coincidencia = min(100, max_coincidencia)
+            contexto = mejor_contexto
         
         # Solo incluir si la coincidencia supera el umbral
         if coincidencia >= umbral:
-            # Extraer contexto alrededor de la coincidencia
-            contexto = ""
-            if posicion >= 0:
-                inicio = max(0, posicion - 30)
-                fin = min(len(descripcion), posicion + len(numero_parte) + 30)
-                contexto = descripcion[inicio:fin].replace(numero_parte, f'**{numero_parte}**')
-            
             resultados.append({
                 'ID': row['ID_ProductoOfertado'],
                 'descripcion': row['descripcion'],
@@ -148,6 +165,7 @@ def buscar_numero_parte(df, numero_parte, umbral=60):
                 'estado_oferta': row.get('estado_oferta', ''),
                 'fecha_publicacion': row.get('fecha_publicacion', ''),
                 'fecha_adjudicacion': row.get('fecha_adjudicacion', ''),
+                'fecha_registro': row.get('fecha_registro', ''),
                 'coincidencia': round(coincidencia, 2),
                 'contexto': contexto,
                 'es_activo': row.get('es_activo', False),
@@ -178,7 +196,7 @@ def mostrar_resultados_busqueda(resultados_df, numero_parte):
     """, unsafe_allow_html=True)
     
     # Resumen rápido
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Total Coincidencias", len(resultados_df))
     with col2:
@@ -187,6 +205,9 @@ def mostrar_resultados_busqueda(resultados_df, numero_parte):
     with col3:
         junio = resultados_df[resultados_df['es_junio_2026'] == True].shape[0]
         st.metric("📅 Junio 2026", junio)
+    with col4:
+        coincidencia_max = resultados_df['coincidencia'].max()
+        st.metric("🎯 Mejor coincidencia", f"{coincidencia_max}%")
     
     st.divider()
     
@@ -197,20 +218,23 @@ def mostrar_resultados_busqueda(resultados_df, numero_parte):
     tabla_show = resultados_df[[
         'ID', 'marca', 'categoria', 'precio', 
         'estado_ficha', 'estado_oferta', 'fecha_publicacion', 
-        'coincidencia', 'es_activo'
+        'coincidencia', 'es_activo', 'es_junio_2026'
     ]].copy()
     
     # Formatear columnas
     tabla_show['coincidencia'] = tabla_show['coincidencia'].apply(lambda x: f"{x}%")
-    tabla_show['estado'] = tabla_show.apply(
-        lambda row: '🟢 Activo' if row['es_activo'] else '🔴 Inactivo', axis=1
+    tabla_show['estado'] = tabla_show['es_activo'].apply(
+        lambda x: '🟢 Activo' if x else '🔴 Inactivo'
     )
     tabla_show['precio'] = tabla_show['precio'].apply(lambda x: f"${float(x):,.2f}" if x else "$0")
+    tabla_show['junio'] = tabla_show['es_junio_2026'].apply(
+        lambda x: '✅ Junio 2026' if x else ''
+    )
     
     # Renombrar columnas
     tabla_show.columns = ['ID', 'Marca', 'Categoría', 'Precio', 
                          'Estado Ficha', 'Estado Oferta', 'Fecha Publicación', 
-                         'Coincidencia', 'Activo', 'Estado']
+                         'Coincidencia', 'Activo', 'Junio 2026', 'Estado']
     
     # Mostrar tabla
     st.dataframe(tabla_show, use_container_width=True, height=300)
@@ -229,9 +253,6 @@ def mostrar_resultados_busqueda(resultados_df, numero_parte):
         estado_texto = "ACTIVO (OFERTADA + VIGENTE)" if row['es_activo'] else "INACTIVO"
         estado_color = "#28a745" if row['es_activo'] else "#dc3545"
         
-        # Destacar si es de Junio 2026
-        junio_badge = " 🏷️ JUNIO 2026" if row['es_junio_2026'] else ""
-        
         # Nivel de coincidencia
         if row['coincidencia'] >= 90:
             nivel = "✅ Alta"
@@ -243,6 +264,15 @@ def mostrar_resultados_busqueda(resultados_df, numero_parte):
             nivel = "❌ Baja"
             nivel_color = "#dc3545"
         
+        # Badges
+        badges = ""
+        if row['es_activo']:
+            badges += '<span class="badge-activo">✅ Activo</span> '
+        else:
+            badges += '<span class="badge-inactivo">🔴 Inactivo</span> '
+        if row['es_junio_2026']:
+            badges += '<span class="badge-junio">📅 Junio 2026</span> '
+        
         st.markdown(f"""
         <div style="background: white; padding: 1.5rem; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin: 1rem 0; border-left: 4px solid {border_color};">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
@@ -252,25 +282,20 @@ def mostrar_resultados_busqueda(resultados_df, numero_parte):
                     <span style="margin-left: 1rem; font-size: 0.9rem; color: #666;">Categoría: {row['categoria']}</span>
                 </div>
                 <div>
-                    <span style="background: {estado_color}; color: white; padding: 0.3rem 0.8rem; border-radius: 20px; font-weight: bold; font-size: 0.8rem;">{estado_icon} {estado_texto}</span>
+                    {badges}
                     <span style="margin-left: 0.5rem; background: {nivel_color}; color: {'white' if row['coincidencia'] >= 90 else '#333'}; padding: 0.3rem 0.8rem; border-radius: 20px; font-weight: bold; font-size: 0.8rem;">{nivel}: {row['coincidencia']}%</span>
-                    <span style="margin-left: 0.5rem; background: #667eea; color: white; padding: 0.3rem 0.8rem; border-radius: 20px; font-weight: bold; font-size: 0.8rem;">💰 ${float(row['precio']):,.2f}</span>
-                    {f'<span style="margin-left: 0.5rem; background: #764ba2; color: white; padding: 0.3rem 0.8rem; border-radius: 20px; font-weight: bold; font-size: 0.8rem;">📅 {row["fecha_publicacion"]}</span>' if row['fecha_publicacion'] else ''}
                 </div>
             </div>
-            <div style="margin-top: 0.8rem; padding: 0.8rem; background: #f8f9fa; border-radius: 5px; font-size: 0.9rem;">
-                <strong>Descripción:</strong> {row['descripcion'][:200]}...
+            <div style="margin-top: 0.8rem; padding: 0.8rem; background: #f8f9fa; border-radius: 5px; font-size: 0.9rem; max-height: 150px; overflow-y: auto;">
+                <strong>Descripción:</strong> {row['descripcion']}
             </div>
-            <div style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 1rem; font-size: 0.85rem; color: #666;">
+            <div style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 1.5rem; font-size: 0.85rem; color: #666;">
                 <span><strong>Estado Ficha:</strong> {row['estado_ficha']}</span>
                 <span><strong>Estado Oferta:</strong> {row['estado_oferta']}</span>
+                <span><strong>Precio:</strong> <span style="font-weight: bold; color: #1f77b4;">${float(row['precio']):,.2f}</span></span>
                 <span><strong>Fecha Publicación:</strong> {row['fecha_publicacion']}</span>
                 <span><strong>Fecha Adjudicación:</strong> {row['fecha_adjudicacion']}</span>
-            </div>
-            <div style="margin-top: 0.5rem; font-size: 0.85rem;">
-                <span style="background: #e9ecef; padding: 0.2rem 0.5rem; border-radius: 4px;">
-                    🔍 Contexto: ...{row['contexto']}...
-                </span>
+                <span><strong>Fecha Registro:</strong> {row['fecha_registro']}</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -652,28 +677,33 @@ def mostrar_buscador(df):
     st.markdown("""
     <div class="search-container">
         <p>Ingresa un número de parte para buscar en todas las descripciones de productos.</p>
-        <p style="font-size: 0.9rem; color: #666;">Ejemplo: <strong>MDP2605F5ZZC2</strong></p>
+        <p style="font-size: 0.9rem; color: #666;">
+            <strong>Ejemplos:</strong> MDP2605F5ZZC2, M70SG6U743162000-OH, NEO55SR716100
+        </p>
     </div>
     """, unsafe_allow_html=True)
     
     # Input de búsqueda
-    numero_parte = st.text_input(
-        "Número de Parte:",
-        placeholder="Ej: MDP2605F5ZZC2",
-        key="buscador_input"
-    )
+    col1, col2 = st.columns([3, 1])
     
-    # Umbral de coincidencia
-    umbral = st.slider(
-        "Umbral de coincidencia (%)",
-        min_value=50,
-        max_value=100,
-        value=60,
-        step=5,
-        help="Porcentaje mínimo de coincidencia para mostrar un resultado"
-    )
+    with col1:
+        numero_parte = st.text_input(
+            "Número de Parte:",
+            placeholder="Ej: MDP2605F5ZZC2, M70SG6U743162000-OH",
+            key="buscador_input"
+        )
     
-    col1, col2 = st.columns([1, 4])
+    with col2:
+        umbral = st.slider(
+            "Umbral (%)",
+            min_value=30,
+            max_value=100,
+            value=50,
+            step=5,
+            help="Porcentaje mínimo de coincidencia"
+        )
+    
+    col1, col2, col3 = st.columns([1, 1, 4])
     with col1:
         buscar_click = st.button("🔍 Buscar", use_container_width=True, type="primary")
     
@@ -681,6 +711,9 @@ def mostrar_buscador(df):
         if st.button("🔄 Limpiar", use_container_width=True):
             st.session_state.buscador_input = ""
             st.rerun()
+    
+    with col3:
+        st.caption("💡 La búsqueda es flexible: puede encontrar el número aunque esté en diferentes formatos")
     
     if buscar_click and numero_parte:
         with st.spinner(f"Buscando '{numero_parte}'..."):
