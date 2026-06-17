@@ -72,18 +72,6 @@ st.markdown("""
         color: #999;
         margin-top: 0.2rem;
     }
-    .highlight-junio {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 1.5rem;
-        border-radius: 10px;
-        text-align: center;
-        margin: 1rem 0;
-    }
-    .highlight-junio .big-number {
-        font-size: 3rem;
-        font-weight: bold;
-    }
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
     }
@@ -132,7 +120,6 @@ class ProductAnalyzer:
         self.records = []
         self.carga_completa = False
         
-        # Construir URL de la API de GitHub
         if folder:
             api_url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/contents/{folder}"
         else:
@@ -149,7 +136,6 @@ class ProductAnalyzer:
             files = response.json()
             archivos_encontrados = []
             
-            # Recorrer todos los archivos y carpetas
             for file in files:
                 if file['type'] == 'file':
                     nombre = file['name'].lower()
@@ -172,7 +158,6 @@ class ProductAnalyzer:
             
             st.success(f"📁 Encontrados {len(archivos_encontrados)} archivos (JSON y ZIP)")
             
-            # Cargar cada archivo
             progress_bar = st.progress(0)
             status_text = st.empty()
             
@@ -249,7 +234,6 @@ class ProductAnalyzer:
         if self.df is None or self.df.empty:
             return
         
-        # Convertir fechas
         self.df['fecha_registro_dt'] = pd.to_datetime(
             self.df['fecha_registro'], 
             format='%d/%m/%Y %I:%M:%S %p',
@@ -266,20 +250,13 @@ class ProductAnalyzer:
             errors='coerce'
         )
         
-        # Extraer marca usando la lista completa
         self.df['marca'] = self.df['descripcion'].apply(self._extract_brand)
-        
-        # Extraer categoria
         self.df['categoria'] = self.df['descripcion'].apply(self._extract_category)
-        
-        # Convertir precio
         self.df['precio_float'] = pd.to_numeric(self.df['precio'], errors='coerce')
         
-        # Filtrar Junio 2026
         self.df['es_junio_2026'] = (self.df['fecha_publicacion_dt'].dt.year == 2026) & \
                                    (self.df['fecha_publicacion_dt'].dt.month == 6)
         
-        # Extraer mes y año para filtros
         self.df['mes'] = self.df['fecha_publicacion_dt'].dt.month
         self.df['año'] = self.df['fecha_publicacion_dt'].dt.year
         self.df['mes_nombre'] = self.df['fecha_publicacion_dt'].dt.strftime('%B %Y')
@@ -290,16 +267,12 @@ class ProductAnalyzer:
             return "Desconocida"
         
         desc_upper = descripcion.upper()
-        
-        # Primero buscar marcas que contienen espacios (ej: "TRIUMPH BOARD")
-        # Ordenar por longitud para que las más específicas coincidan primero
         marcas_ordenadas = sorted(MARCAS_COMPLETAS, key=len, reverse=True)
         
         for marca in marcas_ordenadas:
             if marca.upper() in desc_upper:
                 return marca
         
-        # Si no se encuentra ninguna marca, buscar palabras clave genéricas
         if "HP" in desc_upper:
             return "HP"
         elif "LENOVO" in desc_upper:
@@ -363,28 +336,24 @@ def mostrar_filtros(df):
     
     df_filtrado = df.copy()
     
-    # Filtro por categoria
     categorias = ['Todas'] + sorted(df['categoria'].unique().tolist())
     categoria_seleccionada = st.sidebar.selectbox("📂 Filtrar por Categoria:", categorias)
     
     if categoria_seleccionada != 'Todas':
         df_filtrado = df_filtrado[df_filtrado['categoria'] == categoria_seleccionada]
     
-    # Filtro por marca
     marcas = ['Todas'] + sorted(df['marca'].unique().tolist())
     marca_seleccionada = st.sidebar.selectbox("🏷️ Filtrar por Marca:", marcas)
     
     if marca_seleccionada != 'Todas':
         df_filtrado = df_filtrado[df_filtrado['marca'] == marca_seleccionada]
     
-    # Filtro por estado
     estados = ['Todos'] + sorted(df['estado_ficha'].unique().tolist())
     estado_seleccionado = st.sidebar.selectbox("📊 Filtrar por Estado:", estados)
     
     if estado_seleccionado != 'Todos':
         df_filtrado = df_filtrado[df_filtrado['estado_ficha'] == estado_seleccionado]
     
-    # Mostrar resumen de filtros
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"**📊 Registros mostrados:** {len(df_filtrado)}")
     
@@ -411,11 +380,9 @@ def mostrar_tabla_productos(df, titulo):
 def main():
     st.markdown('<h1 class="main-header">📊 Dashboard de Analisis de Productos</h1>', unsafe_allow_html=True)
     
-    # Inicializar el analizador
     if 'analyzer' not in st.session_state:
         st.session_state.analyzer = ProductAnalyzer()
     
-    # Sidebar
     with st.sidebar:
         st.header("⚙️ Configuracion")
         
@@ -451,271 +418,250 @@ def main():
     
     if not analyzer.carga_completa or analyzer.df is None or analyzer.df.empty:
         st.info("📁 Haz clic en 'Cargar TODOS los JSON (incluye ZIP)' en el panel izquierdo")
+        return
+    
+    df = analyzer.df
+    df_filtrado = mostrar_filtros(df)
+    stats = analyzer.get_stats(df_filtrado)
+    
+    if stats is None or stats['total'] == 0:
+        st.warning("⚠️ No hay datos que coincidan con los filtros seleccionados")
+        return
+    
+    # ============ SECCION JUNIO 2026 ============
+    df_junio = df[df['es_junio_2026'] == True]
+    
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem; border-radius: 15px; margin: 1rem 0;">
+        <h2 style="color: white; text-align: center; margin: 0;">📊 RESULTADOS DE JUNIO 2026</h2>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if not df_junio.empty:
+        stats_junio = analyzer.get_stats(df_junio)
         
-        with st.expander("💡 Guia de uso", expanded=True):
-            st.markdown("""
-            ### 🚀 Como usar este dashboard:
+        col1, col2, col3, col4, col5 = st.columns(5)
+        
+        with col1:
+            st.markdown(f"""
+            <div class="metric-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <div class="metric-value" style="color: white;">{stats_junio['total']}</div>
+                <div class="metric-label" style="color: white;">📦 Fichas Nuevas</div>
+                <div class="metric-sub" style="color: rgba(255,255,255,0.8);">Incorporadas en Junio 2026</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value">{len(stats_junio['por_marca'])}</div>
+                <div class="metric-label">🏷️ Marcas</div>
+                <div class="metric-sub">Diferentes</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col3:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value">{len(stats_junio['por_categoria'])}</div>
+                <div class="metric-label">📂 Categorias</div>
+                <div class="metric-sub">Diferentes</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col4:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value">${stats_junio['precio_promedio']:,.2f}</div>
+                <div class="metric-label">💰 Precio Promedio</div>
+                <div class="metric-sub">Min: ${stats_junio['precio_min']:,.2f}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col5:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value">${stats_junio['precio_max']:,.2f}</div>
+                <div class="metric-label">💰 Precio Maximo</div>
+                <div class="metric-sub">Mediana: ${stats_junio['precio_mediana']:,.2f}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.divider()
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("🏷️ Marcas - Junio 2026")
+            if stats_junio['por_marca']:
+                df_marcas_junio = pd.DataFrame(list(stats_junio['por_marca'].items()), 
+                                               columns=['Marca', 'Cantidad'])
+                df_marcas_junio = df_marcas_junio.sort_values('Cantidad', ascending=False)
+                
+                fig = px.bar(df_marcas_junio.head(15), x='Marca', y='Cantidad',
+                            title=f'Top 15 Marcas (Total: {stats_junio["total"]} fichas)',
+                            color='Marca', text='Cantidad')
+                fig.update_traces(textposition='outside')
+                fig.update_layout(height=450)
+                st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            st.subheader("📂 Categorias - Junio 2026")
+            if stats_junio['por_categoria']:
+                df_cat_junio = pd.DataFrame(list(stats_junio['por_categoria'].items()), 
+                                            columns=['Categoria', 'Cantidad'])
+                df_cat_junio = df_cat_junio.sort_values('Cantidad', ascending=False)
+                
+                fig = px.pie(df_cat_junio, values='Cantidad', names='Categoria',
+                            title='Distribucion por Categoria',
+                            color_discrete_sequence=px.colors.qualitative.Set2)
+                fig.update_traces(textposition='inside', textinfo='percent+label')
+                fig.update_layout(height=450)
+                st.plotly_chart(fig, use_container_width=True)
+        
+        st.divider()
+        
+        st.subheader("📋 Detalle de Fichas Nuevas - Junio 2026")
+        mostrar_tabla_productos(df_junio, "")
+        
+        st.subheader("💾 Exportar Datos de Junio 2026")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            csv = df_junio.to_csv(index=False)
+            b64 = base64.b64encode(csv.encode()).decode()
+            href = f'<a href="data:file/csv;base64,{b64}" download="fichas_nuevas_junio_2026.csv" style="text-decoration: none; background-color: #1f77b4; color: white; padding: 10px 20px; border-radius: 5px; display: inline-block;">📥 Descargar CSV</a>'
+            st.markdown(href, unsafe_allow_html=True)
+        
+        with col2:
+            json_str = df_junio.to_json(orient='records', date_format='iso')
+            b64_json = base64.b64encode(json_str.encode()).decode()
+            href_json = f'<a href="data:file/json;base64,{b64_json}" download="fichas_nuevas_junio_2026.json" style="text-decoration: none; background-color: #28a745; color: white; padding: 10px 20px; border-radius: 5px; display: inline-block;">📥 Descargar JSON</a>'
+            st.markdown(href_json, unsafe_allow_html=True)
+    
+    else:
+        st.warning("📊 No se encontraron fichas nuevas en Junio 2026")
+    
+    st.divider()
+    
+    # ============ ANALISIS COMPLETO ============
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); padding: 1rem; border-radius: 10px; margin: 1rem 0;">
+        <h2 style="color: white; text-align: center; margin: 0;">📊 ANALISIS COMPLETO DE TODOS LOS PRODUCTOS</h2>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📊 Resumen General", 
+        "🏷️ Analisis por Marca", 
+        "📂 Analisis por Categoria",
+        "📋 Datos Detallados"
+    ])
+    
+    with tab1:
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value">{stats['total']}</div>
+                <div class="metric-label">📦 Total Productos</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value">{len(stats['por_marca'])}</div>
+                <div class="metric-label">🏷️ Marcas</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col3:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value">{len(stats['por_categoria'])}</div>
+                <div class="metric-label">📂 Categorias</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col4:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div class="metric-value">${stats['precio_promedio']:,.2f}</div>
+                <div class="metric-label">💰 Precio Promedio</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.divider()
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("Distribucion por Marca")
+            if stats['por_marca']:
+                df_marcas = pd.DataFrame(list(stats['por_marca'].items()), 
+                                         columns=['Marca', 'Cantidad'])
+                df_marcas = df_marcas.sort_values('Cantidad', ascending=False)
+                
+                fig = px.pie(df_marcas.head(15), values='Cantidad', names='Marca',
+                            title='Top 15 Marcas',
+                            color_discrete_sequence=px.colors.qualitative.Set3)
+                fig.update_traces(textposition='inside', textinfo='percent+label')
+                fig.update_layout(height=450)
+                st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            st.subheader("Distribucion por Categoria")
+            if stats['por_categoria']:
+                df_categorias = pd.DataFrame(list(stats['por_categoria'].items()), 
+                                            columns=['Categoria', 'Cantidad'])
+                df_categorias = df_categorias.sort_values('Cantidad', ascending=False)
+                
+                fig = px.bar(df_categorias, x='Categoria', y='Cantidad',
+                            title='Productos por Categoria',
+                            color='Categoria',
+                            color_discrete_sequence=px.colors.qualitative.Set2)
+                fig.update_traces(textposition='outside')
+                fig.update_layout(height=450)
+                st.plotly_chart(fig, use_container_width=True)
+    
+    with tab2:
+        st.subheader("🏷️ Analisis Detallado por Marca")
+        if stats['por_marca']:
+            df_marcas = pd.DataFrame(list(stats['por_marca'].items()), 
+                                     columns=['Marca', 'Cantidad'])
+            df_marcas = df_marcas.sort_values('Cantidad', ascending=False)
             
-            1. Configura tu repositorio en el panel izquierdo
-            2. Haz clic en "Cargar TODOS los JSON (incluye ZIP)"
-            3. El sistema buscara y cargara automaticamente:
-               - Archivos .json directos
-               - Archivos .zip que contengan .json
-
-            ### 🏷️ Marcas incluidas:
-Se incluyen mas de 70 marcas diferentes para reconocimiento automatico
-""")
-return
-
-df = analyzer.df
-df_filtrado = mostrar_filtros(df)
-stats = analyzer.get_stats(df_filtrado)
-
-if stats is None or stats['total'] == 0:
-st.warning("⚠️ No hay datos que coincidan con los filtros seleccionados")
-return
-
-# ============ SECCION JUNIO 2026 - DESTACADA ============
-df_junio = df[df['es_junio_2026'] == True]
-
-st.markdown("""
-<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem; border-radius: 15px; margin: 1rem 0;">
-<h2 style="color: white; text-align: center; margin: 0;">📊 RESULTADOS DE JUNIO 2026</h2>
-</div>
-""", unsafe_allow_html=True)
-
-if not df_junio.empty:
-stats_junio = analyzer.get_stats(df_junio)
-
-# ============ CONTADOR DE FICHAS NUEVAS ============
-col1, col2, col3, col4, col5 = st.columns(5)
-
-with col1:
-st.markdown(f"""
-<div class="metric-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
-    <div class="metric-value" style="color: white;">{stats_junio['total']}</div>
-    <div class="metric-label" style="color: white;">📦 Fichas Nuevas</div>
-    <div class="metric-sub" style="color: rgba(255,255,255,0.8);">Incorporadas en Junio 2026</div>
-</div>
-""", unsafe_allow_html=True)
-
-with col2:
-st.markdown(f"""
-<div class="metric-card">
-    <div class="metric-value">{len(stats_junio['por_marca'])}</div>
-    <div class="metric-label">🏷️ Marcas</div>
-    <div class="metric-sub">Diferentes</div>
-</div>
-""", unsafe_allow_html=True)
-
-with col3:
-st.markdown(f"""
-<div class="metric-card">
-    <div class="metric-value">{len(stats_junio['por_categoria'])}</div>
-    <div class="metric-label">📂 Categorias</div>
-    <div class="metric-sub">Diferentes</div>
-</div>
-""", unsafe_allow_html=True)
-
-with col4:
-st.markdown(f"""
-<div class="metric-card">
-    <div class="metric-value">${stats_junio['precio_promedio']:,.2f}</div>
-    <div class="metric-label">💰 Precio Promedio</div>
-    <div class="metric-sub">Min: ${stats_junio['precio_min']:,.2f}</div>
-</div>
-""", unsafe_allow_html=True)
-
-with col5:
-st.markdown(f"""
-<div class="metric-card">
-    <div class="metric-value">${stats_junio['precio_max']:,.2f}</div>
-    <div class="metric-label">💰 Precio Maximo</div>
-    <div class="metric-sub">Mediana: ${stats_junio['precio_mediana']:,.2f}</div>
-</div>
-""", unsafe_allow_html=True)
-
-st.divider()
-
-# Graficos de Junio
-col1, col2 = st.columns(2)
-
-with col1:
-st.subheader("🏷️ Marcas - Junio 2026")
-if stats_junio['por_marca']:
-    df_marcas_junio = pd.DataFrame(list(stats_junio['por_marca'].items()), 
-                                   columns=['Marca', 'Cantidad'])
-    df_marcas_junio = df_marcas_junio.sort_values('Cantidad', ascending=False)
+            fig = px.bar(df_marcas, x='Marca', y='Cantidad', 
+                        color='Marca', text='Cantidad')
+            fig.update_traces(textposition='outside')
+            fig.update_layout(height=500)
+            st.plotly_chart(fig, use_container_width=True)
+            st.dataframe(df_marcas, use_container_width=True)
     
-    fig = px.bar(df_marcas_junio.head(15), x='Marca', y='Cantidad',
-                title=f'Top 15 Marcas (Total: {stats_junio["total"]} fichas)',
-                color='Marca', text='Cantidad')
-    fig.update_traces(textposition='outside')
-    fig.update_layout(height=450)
-    st.plotly_chart(fig, use_container_width=True)
-
-with col2:
-st.subheader("📂 Categorias - Junio 2026")
-if stats_junio['por_categoria']:
-    df_cat_junio = pd.DataFrame(list(stats_junio['por_categoria'].items()), 
-                                columns=['Categoria', 'Cantidad'])
-    df_cat_junio = df_cat_junio.sort_values('Cantidad', ascending=False)
+    with tab3:
+        st.subheader("📂 Analisis Detallado por Categoria")
+        if stats['por_categoria']:
+            df_categorias = pd.DataFrame(list(stats['por_categoria'].items()), 
+                                         columns=['Categoria', 'Cantidad'])
+            df_categorias = df_categorias.sort_values('Cantidad', ascending=False)
+            
+            fig = px.pie(df_categorias, values='Cantidad', names='Categoria',
+                        color_discrete_sequence=px.colors.qualitative.Set2)
+            fig.update_traces(textposition='inside', textinfo='percent+label')
+            fig.update_layout(height=450)
+            st.plotly_chart(fig, use_container_width=True)
+            st.dataframe(df_categorias, use_container_width=True)
     
-    fig = px.pie(df_cat_junio, values='Cantidad', names='Categoria',
-                title='Distribucion por Categoria',
-                color_discrete_sequence=px.colors.qualitative.Set2)
-    fig.update_traces(textposition='inside', textinfo='percent+label')
-    fig.update_layout(height=450)
-    st.plotly_chart(fig, use_container_width=True)
-
-st.divider()
-
-# Tabla de Junio
-st.subheader("📋 Detalle de Fichas Nuevas - Junio 2026")
-mostrar_tabla_productos(df_junio, "")
-
-# Exportar datos de Junio
-st.subheader("💾 Exportar Datos de Junio 2026")
-col1, col2 = st.columns(2)
-
-with col1:
-csv = df_junio.to_csv(index=False)
-b64 = base64.b64encode(csv.encode()).decode()
-href = f'<a href="data:file/csv;base64,{b64}" download="fichas_nuevas_junio_2026.csv" style="text-decoration: none; background-color: #1f77b4; color: white; padding: 10px 20px; border-radius: 5px; display: inline-block;">📥 Descargar CSV</a>'
-st.markdown(href, unsafe_allow_html=True)
-
-with col2:
-# JSON
-json_str = df_junio.to_json(orient='records', date_format='iso')
-b64_json = base64.b64encode(json_str.encode()).decode()
-href_json = f'<a href="data:file/json;base64,{b64_json}" download="fichas_nuevas_junio_2026.json" style="text-decoration: none; background-color: #28a745; color: white; padding: 10px 20px; border-radius: 5px; display: inline-block;">📥 Descargar JSON</a>'
-st.markdown(href_json, unsafe_allow_html=True)
-
-else:
-st.warning("📊 No se encontraron fichas nuevas en Junio 2026")
-
-st.divider()
-
-# ============ ANALISIS COMPLETO - PESTAÑAS ============
-st.markdown("""
-<div style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); padding: 1rem; border-radius: 10px; margin: 1rem 0;">
-<h2 style="color: white; text-align: center; margin: 0;">📊 ANALISIS COMPLETO DE TODOS LOS PRODUCTOS</h2>
-</div>
-""", unsafe_allow_html=True)
-
-tab1, tab2, tab3, tab4 = st.tabs([
-"📊 Resumen General", 
-"🏷️ Analisis por Marca", 
-"📂 Analisis por Categoria",
-"📋 Datos Detallados"
-])
-
-with tab1:
-# Metricas generales
-col1, col2, col3, col4 = st.columns(4)
-
-with col1:
-st.markdown(f"""
-<div class="metric-card">
-    <div class="metric-value">{stats['total']}</div>
-    <div class="metric-label">📦 Total Productos</div>
-</div>
-""", unsafe_allow_html=True)
-
-with col2:
-st.markdown(f"""
-<div class="metric-card">
-    <div class="metric-value">{len(stats['por_marca'])}</div>
-    <div class="metric-label">🏷️ Marcas</div>
-</div>
-""", unsafe_allow_html=True)
-
-with col3:
-st.markdown(f"""
-<div class="metric-card">
-    <div class="metric-value">{len(stats['por_categoria'])}</div>
-    <div class="metric-label">📂 Categorias</div>
-</div>
-""", unsafe_allow_html=True)
-
-with col4:
-st.markdown(f"""
-<div class="metric-card">
-    <div class="metric-value">${stats['precio_promedio']:,.2f}</div>
-    <div class="metric-label">💰 Precio Promedio</div>
-</div>
-""", unsafe_allow_html=True)
-
-st.divider()
-
-# Graficos generales
-col1, col2 = st.columns(2)
-
-with col1:
-st.subheader("Distribucion por Marca")
-if stats['por_marca']:
-    df_marcas = pd.DataFrame(list(stats['por_marca'].items()), 
-                             columns=['Marca', 'Cantidad'])
-    df_marcas = df_marcas.sort_values('Cantidad', ascending=False)
-    
-    fig = px.pie(df_marcas.head(15), values='Cantidad', names='Marca',
-                title='Top 15 Marcas',
-                color_discrete_sequence=px.colors.qualitative.Set3)
-    fig.update_traces(textposition='inside', textinfo='percent+label')
-    fig.update_layout(height=450)
-    st.plotly_chart(fig, use_container_width=True)
-
-with col2:
-st.subheader("Distribucion por Categoria")
-if stats['por_categoria']:
-    df_categorias = pd.DataFrame(list(stats['por_categoria'].items()), 
-                                columns=['Categoria', 'Cantidad'])
-    df_categorias = df_categorias.sort_values('Cantidad', ascending=False)
-    
-    fig = px.bar(df_categorias, x='Categoria', y='Cantidad',
-                title='Productos por Categoria',
-                color='Categoria',
-                color_discrete_sequence=px.colors.qualitative.Set2)
-    fig.update_traces(textposition='outside')
-    fig.update_layout(height=450)
-    st.plotly_chart(fig, use_container_width=True)
-
-with tab2:
-st.subheader("🏷️ Analisis Detallado por Marca")
-if stats['por_marca']:
-df_marcas = pd.DataFrame(list(stats['por_marca'].items()), 
-                         columns=['Marca', 'Cantidad'])
-df_marcas = df_marcas.sort_values('Cantidad', ascending=False)
-
-fig = px.bar(df_marcas, x='Marca', y='Cantidad', 
-            color='Marca', text='Cantidad')
-fig.update_traces(textposition='outside')
-fig.update_layout(height=500)
-st.plotly_chart(fig, use_container_width=True)
-st.dataframe(df_marcas, use_container_width=True)
-
-with tab3:
-st.subheader("📂 Analisis Detallado por Categoria")
-if stats['por_categoria']:
-df_categorias = pd.DataFrame(list(stats['por_categoria'].items()), 
-                             columns=['Categoria', 'Cantidad'])
-df_categorias = df_categorias.sort_values('Cantidad', ascending=False)
-
-fig = px.pie(df_categorias, values='Cantidad', names='Categoria',
-            color_discrete_sequence=px.colors.qualitative.Set2)
-fig.update_traces(textposition='inside', textinfo='percent+label')
-fig.update_layout(height=450)
-st.plotly_chart(fig, use_container_width=True)
-st.dataframe(df_categorias, use_container_width=True)
-
-with tab4:
-mostrar_tabla_productos(df_filtrado, "Todos los Productos")
-
-st.subheader("💾 Exportar Datos Completos")
-csv = df_filtrado.to_csv(index=False)
-b64 = base64.b64encode(csv.encode()).decode()
-href = f'<a href="data:file/csv;base64,{b64}" download="productos_completos.csv" style="text-decoration: none; background-color: #1f77b4; color: white; padding: 10px 20px; border-radius: 5px; display: inline-block;">📥 Descargar CSV</a>'
-st.markdown(href, unsafe_allow_html=True)
+    with tab4:
+        mostrar_tabla_productos(df_filtrado, "Todos los Productos")
+        
+        st.subheader("💾 Exportar Datos Completos")
+        csv = df_filtrado.to_csv(index=False)
+        b64 = base64.b64encode(csv.encode()).decode()
+        href = f'<a href="data:file/csv;base64,{b64}" download="productos_completos.csv" style="text-decoration: none; background-color: #1f77b4; color: white; padding: 10px 20px; border-radius: 5px; display: inline-block;">📥 Descargar CSV</a>'
+        st.markdown(href, unsafe_allow_html=True)
 
 if __name__ == "__main__":
-main()
+    main()
