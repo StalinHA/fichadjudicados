@@ -1,0 +1,38 @@
+{
+  "meta": {
+    "acuerdo": "249",
+    "catalogo": "252",
+    "categoria": "11751",
+    "total": 2
+  },
+  "records": [
+    {
+      "ID_ProductoOfertado": "85713103",
+      "descripcion": "DISPOSITIVOS DE ALMACENAMIENTO INTERNO : TIPO: SSD CAPACIDAD: 240 GB FACTOR DE FORMA: 2.5&quot; INTERFAZ: SATA VELOCIDAD DE ROTACION: NO APLICA G.F: 36 MESES CARRY IN U. DESPACHO: UNIDAD MARCA: KINGSTON A400 SATA SSD SA400S37/240G SIST. MANEJO RAEE: COLECTIVO",
+      "moneda": "USD",
+      "precio": "70.00",
+      "fecha_registro": "09/06/2026 09:37:17 p. m.",
+      "estado_ficha": "NO_OFERTADA",
+      "estado_oferta": "NO_ADJUDICADA",
+      "fecha_adjudicacion": "",
+      "fecha_publicacion": "",
+      "motivo": "INCORPORACION FASE DE ADMISION Y EVALUACION",
+      "justificacion": "CUMPLE CON LO ESTABLECIDO",
+      "puntaje": ".00"
+    },
+    {
+      "ID_ProductoOfertado": "85713104",
+      "descripcion": "DISPOSITIVOS DE ALMACENAMIENTO INTERNO : TIPO: SSD CAPACIDAD: 480 GB FACTOR DE FORMA: 2.5&quot; INTERFAZ: SATA VELOCIDAD DE ROTACION: NO APLICA G.F: 36 MESES CARRY IN U. DESPACHO: UNIDAD MARCA: ADATA SU630 ASU630SS-480GQ-R SIST. MANEJO RAEE: COLECTIVO",
+      "moneda": "USD",
+      "precio": "190.00",
+      "fecha_registro": "09/06/2026 09:37:17 p. m.",
+      "estado_ficha": "OFERTADA",
+      "estado_oferta": "NO_ADJUDICADA",
+      "fecha_adjudicacion": "",
+      "fecha_publicacion": "13/07/2023 12:00:00 a. m.",
+      "motivo": "INCORPORACION FASE DE ADMISION Y EVALUACION",
+      "justificacion": "CUMPLE CON LO ESTABLECIDO",
+      "puntaje": ".00"
+    }
+  ]
+}

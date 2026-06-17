@@ -1,0 +1,52 @@
+{
+  "meta": {
+    "acuerdo": "249",
+    "catalogo": "252",
+    "categoria": "11747",
+    "total": 3
+  },
+  "records": [
+    {
+      "ID_ProductoOfertado": "85718383",
+      "descripcion": "DISPOSITIVOS DE ALMACENAMIENTO EXTERNO : TIPO: HDD CAPACIDAD: 2 TB FACTOR DE FORMA: 2.5&quot; INTERFAZ: USB S.O. COMPATIBLE: WINDOWS PROTECCION IP: SI G.F: 36 MESES CARRY IN U. DESPACHO: UNIDAD MARCA: ADATA HD 650 AHD650-2TU31-CBK SIST. MANEJO RAEE: COLECTIVO",
+      "moneda": "USD",
+      "precio": "120.00",
+      "fecha_registro": "09/06/2026 09:34:18 p. m.",
+      "estado_ficha": "OFERTADA",
+      "estado_oferta": "NO_ADJUDICADA",
+      "fecha_adjudicacion": "",
+      "fecha_publicacion": "13/07/2024 12:00:00 a. m.",
+      "motivo": "INCORPORACION FASE DE ADMISION Y EVALUACION",
+      "justificacion": "CUMPLE CON LO ESTABLECIDO",
+      "puntaje": "4.00"
+    },
+    {
+      "ID_ProductoOfertado": "85718384",
+      "descripcion": "DISPOSITIVOS DE ALMACENAMIENTO EXTERNO : TIPO: HDD CAPACIDAD: 1 TB FACTOR DE FORMA: 2.5&quot; INTERFAZ: USB S.O. COMPATIBLE: WINDOWS PROTECCION IP: SI G.F: 36 MESES CARRY IN U. DESPACHO: UNIDAD MARCA: ADATA HD720 AHD720-1TU31-CBK SIST. MANEJO RAEE: COLECTIVO",
+      "moneda": "USD",
+      "precio": "90.00",
+      "fecha_registro": "09/06/2026 09:34:18 p. m.",
+      "estado_ficha": "OFERTADA",
+      "estado_oferta": "VIGENTE",
+      "fecha_adjudicacion": "12/06/2026 04:43:23 p. m.",
+      "fecha_publicacion": "13/07/2024 12:00:00 a. m.",
+      "motivo": "INCORPORACION FASE DE ADMISION Y EVALUACION",
+      "justificacion": "CUMPLE CON LO ESTABLECIDO",
+      "puntaje": "64.25"
+    },
+    {
+      "ID_ProductoOfertado": "85718385",
+      "descripcion": "DISPOSITIVOS DE ALMACENAMIENTO EXTERNO : TIPO: HDD CAPACIDAD: 2 TB FACTOR DE FORMA: 2.5&quot; INTERFAZ: USB S.O. COMPATIBLE: WINDOWS PROTECCION IP: SI G.F: 36 MESES CARRY IN U. DESPACHO: UNIDAD MARCA: ADATA HD720 AHD720-2TU31-CBK SIST. MANEJO RAEE: COLECTIVO",
+      "moneda": "USD",
+      "precio": "115.00",
+      "fecha_registro": "09/06/2026 09:34:18 p. m.",
+      "estado_ficha": "OFERTADA",
+      "estado_oferta": "VIGENTE",
+      "fecha_adjudicacion": "12/06/2026 04:43:23 p. m.",
+      "fecha_publicacion": "13/07/2024 12:00:00 a. m.",
+      "motivo": "INCORPORACION FASE DE ADMISION Y EVALUACION",
+      "justificacion": "CUMPLE CON LO ESTABLECIDO",
+      "puntaje": "65.22"
+    }
+  ]
+}
