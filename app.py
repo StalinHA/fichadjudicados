@@ -7,11 +7,16 @@ import plotly.express as px
 import plotly.graph_objects as go
 import base64
 from io import BytesIO
+import zipfile
+import io
+import tempfile
+import os
+import re
 
 # Configuración de la página
 st.set_page_config(
     page_title="Dashboard de Análisis de Productos",
-    page_icon=" ",
+    page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -51,11 +56,6 @@ st.markdown("""
         color: #666;
         margin-top: 0.5rem;
     }
-    .metric-sub {
-        font-size: 0.8rem;
-        color: #999;
-        margin-top: 0.2rem;
-    }
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
     }
@@ -70,12 +70,6 @@ st.markdown("""
     .stTabs [aria-selected="true"] {
         background-color: #1f77b4;
         color: white;
-    }
-    .filter-section {
-        background: #f8f9fa;
-        padding: 1rem;
-        border-radius: 10px;
-        margin: 1rem 0;
     }
     .success-box {
         background-color: #d4edda;
@@ -104,11 +98,13 @@ class ProductAnalyzer:
         self.records = []
         self.source_info = ""
         self.carga_completa = False
+        self.archivos_procesados = []
         
     def load_from_github(self, repo_owner, repo_name, branch="main", folder=""):
-        """Carga TODOS los archivos JSON desde GitHub"""
+        """Carga TODOS los archivos JSON desde GitHub, incluyendo los que están en ZIP"""
         self.records = []
         self.carga_completa = False
+        self.archivos_procesados = []
         
         # Construir URL de la API de GitHub
         if folder:
@@ -126,12 +122,14 @@ class ProductAnalyzer:
                 return None
             
             files = response.json()
-            json_files = []
+            archivos_encontrados = []
             
             # Recorrer todos los archivos y carpetas
             for file in files:
-                if file['type'] == 'file' and file['name'].endswith('.json'):
-                    json_files.append(file)
+                if file['type'] == 'file':
+                    nombre = file['name'].lower()
+                    if nombre.endswith('.json') or nombre.endswith('.zip'):
+                        archivos_encontrados.append(file)
                 elif file['type'] == 'dir':
                     # Buscar en subdirectorios
                     sub_url = f"https://api.github.com/repos/{repo_owner}/{repo_name}/contents/{file['path']}"
@@ -139,48 +137,64 @@ class ProductAnalyzer:
                     if sub_response.status_code == 200:
                         sub_files = sub_response.json()
                         for sub_file in sub_files:
-                            if sub_file['type'] == 'file' and sub_file['name'].endswith('.json'):
-                                json_files.append(sub_file)
+                            if sub_file['type'] == 'file':
+                                nombre = sub_file['name'].lower()
+                                if nombre.endswith('.json') or nombre.endswith('.zip'):
+                                    archivos_encontrados.append(sub_file)
             
-            if not json_files:
-                st.warning("⚠️ No se encontraron archivos JSON en el repositorio")
+            if not archivos_encontrados:
+                st.warning("⚠️ No se encontraron archivos JSON o ZIP en el repositorio")
                 return None
             
-            st.success(f"📁 Encontrados {len(json_files)} archivos JSON")
+            st.success(f"📁 Encontrados {len(archivos_encontrados)} archivos (JSON y ZIP)")
             
-            # Cargar cada archivo JSON
+            # Cargar cada archivo
             progress_bar = st.progress(0)
             status_text = st.empty()
             
             total_records = 0
-            archivos_cargados = 0
+            archivos_procesados = 0
             
-            for idx, file_info in enumerate(json_files):
-                status_text.text(f"📄 Cargando {idx+1}/{len(json_files)}: {file_info['name']} ({file_info['size']} bytes)")
+            for idx, file_info in enumerate(archivos_encontrados):
+                nombre = file_info['name']
+                status_text.text(f"📄 Procesando {idx+1}/{len(archivos_encontrados)}: {nombre} ({file_info['size']} bytes)")
                 
                 try:
                     # Descargar el archivo
                     file_response = requests.get(file_info['download_url'])
                     if file_response.status_code == 200:
-                        data = file_response.json()
-                        if 'records' in data:
-                            records_count = len(data['records'])
-                            self.records.extend(data['records'])
-                            total_records += records_count
-                            archivos_cargados += 1
+                        contenido = file_response.content
+                        
+                        # Verificar si es ZIP
+                        if nombre.lower().endswith('.zip'):
+                            registros_zip = self._procesar_zip(contenido, nombre)
+                            if registros_zip:
+                                self.records.extend(registros_zip)
+                                total_records += len(registros_zip)
+                                archivos_procesados += 1
+                                st.info(f"📦 {nombre}: {len(registros_zip)} registros extraídos")
+                        else:
+                            # Es JSON directo
+                            data = json.loads(contenido)
+                            if 'records' in data:
+                                self.records.extend(data['records'])
+                                total_records += len(data['records'])
+                                archivos_procesados += 1
+                                st.info(f"📄 {nombre}: {len(data['records'])} registros")
+                                
                 except Exception as e:
-                    st.error(f"❌ Error en {file_info['name']}: {str(e)[:100]}")
+                    st.warning(f"⚠️ Error en {nombre}: {str(e)[:100]}")
                 
-                progress_bar.progress((idx + 1) / len(json_files))
+                progress_bar.progress((idx + 1) / len(archivos_encontrados))
             
-            status_text.text(f"✅ ¡Carga completada! {archivos_cargados} archivos, {total_records} registros")
+            status_text.text(f"✅ ¡Carga completada! {archivos_procesados} archivos procesados, {total_records} registros")
             progress_bar.empty()
             
             if self.records:
                 self.df = pd.DataFrame(self.records)
                 self._process_data()
                 self.carga_completa = True
-                self.source_info = f"GitHub: {repo_owner}/{repo_name} ({archivos_cargados} archivos)"
+                self.source_info = f"GitHub: {repo_owner}/{repo_name} ({archivos_procesados} archivos)"
                 return self.df
             
             return None
@@ -188,6 +202,26 @@ class ProductAnalyzer:
         except Exception as e:
             st.error(f"❌ Error: {str(e)}")
             return None
+    
+    def _procesar_zip(self, contenido_zip, nombre_zip):
+        """Procesa un archivo ZIP y extrae todos los JSON que contiene"""
+        registros = []
+        
+        try:
+            with zipfile.ZipFile(io.BytesIO(contenido_zip)) as zip_file:
+                for file_name in zip_file.namelist():
+                    if file_name.lower().endswith('.json'):
+                        try:
+                            with zip_file.open(file_name) as json_file:
+                                data = json.load(json_file)
+                                if 'records' in data:
+                                    registros.extend(data['records'])
+                        except Exception as e:
+                            st.warning(f"⚠️ Error al leer {file_name} dentro del ZIP: {str(e)[:50]}")
+        except Exception as e:
+            st.error(f"❌ Error al procesar ZIP {nombre_zip}: {str(e)}")
+        
+        return registros
     
     def _process_data(self):
         """Procesa y transforma los datos"""
@@ -241,10 +275,7 @@ class ProductAnalyzer:
             'ASUS': ['ASUS'],
             'ACER': ['ACER'],
             'MADI-TEK': ['MADI-TEK'],
-            'CYBER WORKPAD': ['CYBER WORKPAD'],
-            'SAMSUNG': ['SAMSUNG'],
-            'TOSHIBA': ['TOSHIBA'],
-            'IBM': ['IBM']
+            'CYBER WORKPAD': ['CYBER WORKPAD']
         }
         
         desc_upper = descripcion.upper()
@@ -266,10 +297,6 @@ class ProductAnalyzer:
             return "Escritorio"
         elif "SERVIDOR" in desc_upper or "SERVER" in desc_upper:
             return "Servidor"
-        elif "MONITOR" in desc_upper or "PANTALLA" in desc_upper:
-            return "Monitor"
-        elif "IMPRESORA" in desc_upper or "PRINTER" in desc_upper:
-            return "Impresora"
         else:
             return "Otro"
     
@@ -297,7 +324,7 @@ class ProductAnalyzer:
 
 def mostrar_metricas(stats):
     """Muestra las métricas principales"""
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         st.markdown(f"""
@@ -328,15 +355,6 @@ def mostrar_metricas(stats):
         <div class="metric-card">
             <div class="metric-value">${stats['precio_promedio']:,.2f}</div>
             <div class="metric-label">💰 Precio Promedio</div>
-            <div class="metric-sub">Min: ${stats['precio_min']:,.2f} | Max: ${stats['precio_max']:,.2f}</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col5:
-        st.markdown(f"""
-        <div class="metric-card">
-            <div class="metric-value">{len(stats['por_estado'])}</div>
-            <div class="metric-label">📊 Estados</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -353,15 +371,10 @@ def mostrar_graficos(stats):
             
             fig = px.pie(df_marcas, values='Cantidad', names='Marca',
                         title=f'Total: {stats["total"]} productos',
-                        color_discrete_sequence=px.colors.qualitative.Set3,
-                        hover_data={'Cantidad': True})
+                        color_discrete_sequence=px.colors.qualitative.Set3)
             fig.update_traces(textposition='inside', textinfo='percent+label')
             fig.update_layout(height=450)
             st.plotly_chart(fig, use_container_width=True)
-            
-            # Tabla de marcas
-            with st.expander("📋 Ver detalle de marcas"):
-                st.dataframe(df_marcas, use_container_width=True)
     
     with col2:
         st.subheader("📂 Distribución por Categoría")
@@ -373,21 +386,15 @@ def mostrar_graficos(stats):
             fig = px.bar(df_categorias, x='Categoría', y='Cantidad',
                         title='Productos por Categoría',
                         color='Categoría',
-                        color_discrete_sequence=px.colors.qualitative.Set2,
-                        text='Cantidad')
+                        color_discrete_sequence=px.colors.qualitative.Set2)
             fig.update_traces(textposition='outside')
             fig.update_layout(height=450)
             st.plotly_chart(fig, use_container_width=True)
-            
-            # Tabla de categorías
-            with st.expander("📋 Ver detalle de categorías"):
-                st.dataframe(df_categorias, use_container_width=True)
 
-def mostrar_tabla_productos(df, titulo="📋 Lista de Productos"):
+def mostrar_tabla_productos(df, titulo):
     """Muestra la tabla de productos con filtros"""
     st.subheader(titulo)
     
-    # Columnas a mostrar
     columnas = ['ID_ProductoOfertado', 'descripcion', 'marca', 'categoria', 
                 'precio', 'estado_ficha', 'fecha_publicacion']
     
@@ -397,48 +404,6 @@ def mostrar_tabla_productos(df, titulo="📋 Lista de Productos"):
                        'Precio (USD)', 'Estado', 'Fecha Publicación']
     
     st.dataframe(df_show, use_container_width=True, height=500)
-
-def mostrar_analisis_precios(stats, df):
-    """Muestra el análisis de precios detallado"""
-    st.subheader("📈 Análisis de Precios")
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("💰 Precio Mínimo", f"${stats['precio_min']:,.2f}")
-    with col2:
-        st.metric("💰 Precio Máximo", f"${stats['precio_max']:,.2f}")
-    with col3:
-        st.metric("💰 Precio Promedio", f"${stats['precio_promedio']:,.2f}")
-    
-    st.divider()
-    
-    # Gráfico de precios por marca
-    if len(df['marca'].unique()) > 1:
-        df_precios_marca = df.groupby('marca').agg({
-            'precio_float': ['mean', 'min', 'max', 'count']
-        }).reset_index()
-        df_precios_marca.columns = ['Marca', 'Promedio', 'Mínimo', 'Máximo', 'Cantidad']
-        df_precios_marca = df_precios_marca.sort_values('Promedio', ascending=False)
-        
-        fig = px.bar(df_precios_marca, x='Marca', y='Promedio',
-                    title='Precio Promedio por Marca',
-                    color='Marca',
-                    text=df_precios_marca['Promedio'].apply(lambda x: f'${x:,.0f}'),
-                    hover_data={'Mínimo': True, 'Máximo': True, 'Cantidad': True})
-        fig.update_traces(textposition='outside')
-        fig.update_layout(height=400)
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Tabla de precios por marca
-        with st.expander("📋 Detalle de precios por marca"):
-            st.dataframe(df_precios_marca.round(2), use_container_width=True)
-    
-    # Distribución de precios
-    fig = px.box(df, x='categoria', y='precio_float', color='categoria',
-                title='Distribución de Precios por Categoría',
-                labels={'categoria': 'Categoría', 'precio_float': 'Precio (USD)'})
-    fig.update_layout(height=400)
-    st.plotly_chart(fig, use_container_width=True)
 
 def mostrar_filtros(df):
     """Muestra los filtros interactivos y devuelve el DataFrame filtrado"""
@@ -468,48 +433,6 @@ def mostrar_filtros(df):
     if estado_seleccionado != 'Todos':
         df_filtrado = df_filtrado[df_filtrado['estado_ficha'] == estado_seleccionado]
     
-    # Filtro por rango de precios
-    min_precio = float(df['precio_float'].min())
-    max_precio = float(df['precio_float'].max())
-    
-    rango_precio = st.sidebar.slider(
-        "💰 Rango de Precios (USD):",
-        min_value=min_precio,
-        max_value=max_precio,
-        value=(min_precio, max_precio),
-        step=10.0
-    )
-    
-    df_filtrado = df_filtrado[
-        (df_filtrado['precio_float'] >= rango_precio[0]) & 
-        (df_filtrado['precio_float'] <= rango_precio[1])
-    ]
-    
-    # Filtro por fecha
-    fechas_disponibles = sorted(df['fecha_publicacion_dt'].dropna().unique())
-    if len(fechas_disponibles) > 0:
-        fecha_min = df['fecha_publicacion_dt'].min()
-        fecha_max = df['fecha_publicacion_dt'].max()
-        
-        fecha_inicio = st.sidebar.date_input(
-            "📅 Fecha Inicio:",
-            value=fecha_min.date() if pd.notnull(fecha_min) else datetime.now().date(),
-            min_value=fecha_min.date() if pd.notnull(fecha_min) else None,
-            max_value=fecha_max.date() if pd.notnull(fecha_max) else None
-        )
-        
-        fecha_fin = st.sidebar.date_input(
-            "📅 Fecha Fin:",
-            value=fecha_max.date() if pd.notnull(fecha_max) else datetime.now().date(),
-            min_value=fecha_min.date() if pd.notnull(fecha_min) else None,
-            max_value=fecha_max.date() if pd.notnull(fecha_max) else None
-        )
-        
-        df_filtrado = df_filtrado[
-            (df_filtrado['fecha_publicacion_dt'].dt.date >= fecha_inicio) & 
-            (df_filtrado['fecha_publicacion_dt'].dt.date <= fecha_fin)
-        ]
-    
     # Mostrar resumen de filtros
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"**📊 Registros mostrados:** {len(df_filtrado)}")
@@ -519,129 +442,6 @@ def mostrar_filtros(df):
         st.sidebar.markdown(f"**Filtrados:** {porcentaje:.1f}% del total")
     
     return df_filtrado
-
-def mostrar_pestanas(df, stats_completos):
-    """Muestra las pestañas con diferentes vistas"""
-    
-    # Crear pestañas
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "📊 Resumen General", 
-        "🏷️ Análisis por Marca", 
-        "📂 Análisis por Categoría",
-        "💰 Análisis de Precios",
-        "📋 Datos Detallados"
-    ])
-    
-    with tab1:
-        st.subheader("📊 Resumen General del Dashboard")
-        
-        # Métricas principales
-        mostrar_metricas(stats_completos)
-        
-        st.divider()
-        
-        # Gráficos principales
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("Top 10 Marcas")
-            if stats_completos['por_marca']:
-                df_marcas = pd.DataFrame(list(stats_completos['por_marca'].items()), 
-                                         columns=['Marca', 'Cantidad'])
-                df_marcas = df_marcas.sort_values('Cantidad', ascending=False).head(10)
-                fig = px.bar(df_marcas, x='Marca', y='Cantidad', 
-                            color='Marca', text='Cantidad')
-                fig.update_traces(textposition='outside')
-                fig.update_layout(height=400)
-                st.plotly_chart(fig, use_container_width=True)
-        
-        with col2:
-            st.subheader("Distribución por Estado")
-            if stats_completos['por_estado']:
-                df_estado = pd.DataFrame(list(stats_completos['por_estado'].items()), 
-                                         columns=['Estado', 'Cantidad'])
-                fig = px.pie(df_estado, values='Cantidad', names='Estado',
-                            color_discrete_sequence=px.colors.qualitative.Set2)
-                fig.update_traces(textposition='inside', textinfo='percent+label')
-                fig.update_layout(height=400)
-                st.plotly_chart(fig, use_container_width=True)
-    
-    with tab2:
-        st.subheader("🏷️ Análisis Detallado por Marca")
-        
-        if stats_completos['por_marca']:
-            df_marcas = pd.DataFrame(list(stats_completos['por_marca'].items()), 
-                                     columns=['Marca', 'Cantidad'])
-            df_marcas = df_marcas.sort_values('Cantidad', ascending=False)
-            
-            # Gráfico de barras
-            fig = px.bar(df_marcas, x='Marca', y='Cantidad', 
-                        title='Productos por Marca',
-                        color='Marca',
-                        text='Cantidad')
-            fig.update_traces(textposition='outside')
-            fig.update_layout(height=450)
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Tabla completa
-            st.dataframe(df_marcas, use_container_width=True)
-            
-            # Análisis por marca y categoría
-            st.subheader("📊 Matriz Marca vs Categoría")
-            matriz = pd.crosstab(df['marca'], df['categoria'])
-            st.dataframe(matriz, use_container_width=True)
-    
-    with tab3:
-        st.subheader("📂 Análisis Detallado por Categoría")
-        
-        if stats_completos['por_categoria']:
-            df_categorias = pd.DataFrame(list(stats_completos['por_categoria'].items()), 
-                                         columns=['Categoría', 'Cantidad'])
-            df_categorias = df_categorias.sort_values('Cantidad', ascending=False)
-            
-            # Gráfico de pastel
-            fig = px.pie(df_categorias, values='Cantidad', names='Categoría',
-                        title='Distribución por Categoría',
-                        color_discrete_sequence=px.colors.qualitative.Set2)
-            fig.update_traces(textposition='inside', textinfo='percent+label')
-            fig.update_layout(height=450)
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Tabla
-            st.dataframe(df_categorias, use_container_width=True)
-            
-            # Análisis de precios por categoría
-            st.subheader("💰 Precios por Categoría")
-            df_precios_cat = df.groupby('categoria')['precio_float'].agg(
-                ['mean', 'min', 'max', 'count', 'median']
-            ).reset_index()
-            df_precios_cat.columns = ['Categoría', 'Promedio', 'Mínimo', 'Máximo', 'Cantidad', 'Mediana']
-            st.dataframe(df_precios_cat.round(2), use_container_width=True)
-    
-    with tab4:
-        mostrar_analisis_precios(stats_completos, df)
-    
-    with tab5:
-        mostrar_tabla_productos(df, "📋 Todos los Productos")
-        
-        # Botón de exportación
-        st.subheader("💾 Exportar Datos")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            csv = df.to_csv(index=False)
-            b64 = base64.b64encode(csv.encode()).decode()
-            href = f'<a href="data:file/csv;base64,{b64}" download="productos_completos.csv" style="text-decoration: none; background-color: #1f77b4; color: white; padding: 10px 20px; border-radius: 5px; display: inline-block;">📥 Descargar CSV</a>'
-            st.markdown(href, unsafe_allow_html=True)
-        
-        with col2:
-            excel_buffer = BytesIO()
-            with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-                df.to_excel(writer, index=False, sheet_name='Productos')
-            excel_data = excel_buffer.getvalue()
-            b64_excel = base64.b64encode(excel_data).decode()
-            href_excel = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64_excel}" download="productos_completos.xlsx" style="text-decoration: none; background-color: #28a745; color: white; padding: 10px 20px; border-radius: 5px; display: inline-block;">📥 Descargar Excel</a>'
-            st.markdown(href_excel, unsafe_allow_html=True)
 
 def main():
     st.markdown('<h1 class="main-header">📊 Dashboard de Análisis de Productos</h1>', unsafe_allow_html=True)
@@ -656,8 +456,9 @@ def main():
         
         st.markdown("""
         <div class="info-box">
-        <strong>📌 Carga desde GitHub</strong><br>
-        El sistema cargará automáticamente TODOS los archivos JSON
+        <strong>📌 Soporte para ZIP</strong><br>
+        El sistema detecta y extrae automáticamente<br>
+        archivos JSON desde dentro de ZIP
         </div>
         """, unsafe_allow_html=True)
         
@@ -667,7 +468,7 @@ def main():
         branch = st.text_input("🌿 Rama:", value="main")
         folder = st.text_input("📂 Carpeta (opcional):", value="")
         
-        if st.button("🚀 Cargar TODOS los JSON", use_container_width=True, type="primary"):
+        if st.button("🚀 Cargar TODOS los JSON (incluye ZIP)", use_container_width=True, type="primary"):
             with st.spinner("Cargando archivos desde GitHub..."):
                 df = st.session_state.analyzer.load_from_github(repo_owner, repo_name, branch, folder)
                 if df is not None and not df.empty:
@@ -687,21 +488,16 @@ def main():
     
     # Verificar si hay datos cargados
     if not analyzer.carga_completa or analyzer.df is None or analyzer.df.empty:
-        st.info("📁 Haz clic en 'Cargar TODOS los JSON' en el panel izquierdo")
+        st.info("📁 Haz clic en 'Cargar TODOS los JSON (incluye ZIP)' en el panel izquierdo")
         
         with st.expander("💡 Guía de uso", expanded=True):
             st.markdown("""
             ### 🚀 Cómo usar este dashboard:
             
             1. **Configura tu repositorio** en el panel izquierdo
-            2. **Haz clic** en "Cargar TODOS los JSON"
-            3. El sistema buscará y cargará automáticamente todos los archivos .json
+            2. **Haz clic** en "Cargar TODOS los JSON (incluye ZIP)"
+            3. El sistema buscará y cargará automáticamente:
+               - ✅ Archivos .json directos
+               - ✅ Archivos .zip que contengan .json
             
-            ### 📋 Datos que analizará:
-            - ✅ Todos los productos de todos los JSON
-            - ✅ Productos nuevos de Junio 2026
-            - ✅ Distribución por marca y categoría
-            - ✅ Análisis de precios
-            - ✅ Filtros interactivos
-            
-            ### 📂 Estructura de archivos:
+            ### 📂 Estructura de archivos soportada:
