@@ -11,7 +11,7 @@ import zipfile
 import io
 import re
 
-# Configuración de la página - CORREGIDO
+# Configuración de la página
 st.set_page_config(
     page_title="Dashboard de Análisis de Productos",
     page_icon="📊",
@@ -115,20 +115,6 @@ st.markdown("""
         border: 1px solid #b8daff;
         margin: 1rem 0;
     }
-    .info-box strong {
-        color: #004085;
-    }
-    .success-box {
-        background-color: #d4edda;
-        color: #155724;
-        padding: 1rem;
-        border-radius: 10px;
-        border: 1px solid #c3e6cb;
-        margin: 1rem 0;
-    }
-    .success-box strong {
-        color: #155724;
-    }
     .junio-header {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         padding: 1.5rem;
@@ -157,6 +143,19 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
+def convertir_fecha(fecha_str):
+    """Convierte fechas con formato '13/06/2026 12:00:00 a. m.' a datetime"""
+    if not isinstance(fecha_str, str):
+        return pd.NaT
+    
+    try:
+        # Reemplazar "a. m." por "AM" y "p. m." por "PM"
+        fecha_limpia = fecha_str.replace('a. m.', 'AM').replace('p. m.', 'PM')
+        # Intentar convertir con el formato correcto
+        return pd.to_datetime(fecha_limpia, format='%d/%m/%Y %I:%M:%S %p', errors='coerce')
+    except:
+        return pd.NaT
 
 class ProductAnalyzer:
     """Clase principal para el analisis de productos"""
@@ -286,22 +285,10 @@ class ProductAnalyzer:
         if self.df is None or self.df.empty:
             return
         
-        # Convertir fechas
-        self.df['fecha_registro_dt'] = pd.to_datetime(
-            self.df['fecha_registro'], 
-            format='%d/%m/%Y %I:%M:%S %p',
-            errors='coerce'
-        )
-        self.df['fecha_publicacion_dt'] = pd.to_datetime(
-            self.df['fecha_publicacion'], 
-            format='%d/%m/%Y %I:%M:%S %p',
-            errors='coerce'
-        )
-        self.df['fecha_adjudicacion_dt'] = pd.to_datetime(
-            self.df['fecha_adjudicacion'], 
-            format='%d/%m/%Y %I:%M:%S %p',
-            errors='coerce'
-        )
+        # Convertir fechas usando la función convertir_fecha
+        self.df['fecha_registro_dt'] = self.df['fecha_registro'].apply(convertir_fecha)
+        self.df['fecha_publicacion_dt'] = self.df['fecha_publicacion'].apply(convertir_fecha)
+        self.df['fecha_adjudicacion_dt'] = self.df['fecha_adjudicacion'].apply(convertir_fecha)
         
         # Extraer marca
         self.df['marca'] = self.df['descripcion'].apply(self._extract_brand)
@@ -326,6 +313,9 @@ class ProductAnalyzer:
         self.df['año_mes_publicacion'] = self.df['fecha_publicacion_dt'].dt.strftime('%Y-%m')
         self.df['mes_nombre_publicacion'] = self.df['fecha_publicacion_dt'].dt.strftime('%B %Y')
         self.df['dia_publicacion'] = self.df['fecha_publicacion_dt'].dt.day
+        
+        # Mostrar información de depuración
+        st.sidebar.success(f"📅 Fechas procesadas: {self.df['fecha_publicacion_dt'].notna().sum()} registros con fecha válida")
     
     def _extract_brand(self, descripcion):
         """Extrae la marca de la descripcion usando la lista completa"""
@@ -454,9 +444,11 @@ def mostrar_filtros(df):
     st.sidebar.markdown("---")
     st.sidebar.subheader("📅 Filtro por Fecha de Publicación")
     
-    if not df['fecha_publicacion_dt'].isna().all():
-        fecha_min = df['fecha_publicacion_dt'].min().date()
-        fecha_max = df['fecha_publicacion_dt'].max().date()
+    # Verificar que hay fechas válidas
+    fechas_validas = df['fecha_publicacion_dt'].dropna()
+    if not fechas_validas.empty:
+        fecha_min = fechas_validas.min().date()
+        fecha_max = fechas_validas.max().date()
         
         fecha_inicio = st.sidebar.date_input(
             "Fecha Inicio:",
@@ -476,6 +468,8 @@ def mostrar_filtros(df):
             (df_filtrado['fecha_publicacion_dt'].dt.date >= fecha_inicio) & 
             (df_filtrado['fecha_publicacion_dt'].dt.date <= fecha_fin)
         ]
+    else:
+        st.sidebar.warning("⚠️ No hay fechas válidas para filtrar")
     
     # Mostrar resumen de filtros
     st.sidebar.markdown("---")
@@ -510,7 +504,7 @@ def mostrar_analisis_fechas(df):
         st.warning("No hay datos para mostrar en el análisis de fechas")
         return
     
-    # Verificar que la columna de fecha existe y tiene datos válidos
+    # Verificar que la columna de fecha existe
     if 'fecha_publicacion_dt' not in df.columns:
         st.error("No se encontró la columna de fecha de publicación")
         return
