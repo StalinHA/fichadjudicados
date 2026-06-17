@@ -11,7 +11,7 @@ from io import BytesIO
 # Configuración de la página
 st.set_page_config(
     page_title="Dashboard de Análisis de Productos",
-    page_icon="📊",
+    page_icon=" ",
     layout="wide",
     initial_sidebar_state="expanded"
 )
