@@ -11,6 +11,7 @@ import zipfile
 import io
 import re
 import time
+from difflib import SequenceMatcher
 
 # Configuración de la página
 st.set_page_config(
@@ -51,7 +52,7 @@ CATEGORIAS_OFICIALES = {
 
 CATEGORIAS_NOMBRES = list(CATEGORIAS_OFICIALES.values())
 
-# Estilos CSS simplificados
+# Estilos CSS
 st.markdown("""
 <style>
     .main-header {font-size: 2.5rem; color: #1f77b4 !important; text-align: center; padding: 1rem; background: linear-gradient(90deg, #f0f2f6, #ffffff); border-radius: 10px; margin-bottom: 2rem;}
@@ -66,6 +67,13 @@ st.markdown("""
     .junio-header p {color: rgba(255,255,255,0.9) !important; margin: 0;}
     .analisis-header {background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); padding: 1rem; border-radius: 10px; margin: 1rem 0; text-align: center;}
     .analisis-header h2 {color: white !important; margin: 0;}
+    .result-card {background: white; padding: 1.5rem; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin: 1rem 0; border-left: 4px solid #1f77b4;}
+    .result-card .title {font-size: 1.2rem; font-weight: bold; color: #1f77b4;}
+    .result-card .subtitle {font-size: 0.9rem; color: #666;}
+    .match-highlight {background-color: #28a745; color: white; padding: 0.2rem 0.5rem; border-radius: 4px;}
+    .partial-match {background-color: #ffc107; color: #333; padding: 0.2rem 0.5rem; border-radius: 4px;}
+    .no-match {background-color: #dc3545; color: white; padding: 0.2rem 0.5rem; border-radius: 4px;}
+    .search-container {background: #f8f9fa; padding: 1.5rem; border-radius: 10px; margin: 1rem 0;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -78,6 +86,194 @@ def convertir_fecha(fecha_str):
         return pd.to_datetime(fecha_limpia, format='%d/%m/%Y %I:%M:%S %p', errors='coerce')
     except:
         return pd.NaT
+
+# ============ FUNCION DE BUSQUEDA AVANZADA ============
+def buscar_numero_parte(df, numero_parte, umbral=60):
+    """
+    Busca un número de parte en la descripción y calcula coincidencias
+    Retorna: DataFrame con resultados ordenados por coincidencia
+    """
+    if df is None or df.empty or not numero_parte:
+        return None
+    
+    numero_parte = numero_parte.upper().strip()
+    resultados = []
+    
+    for idx, row in df.iterrows():
+        descripcion = str(row['descripcion']).upper()
+        
+        # Buscar coincidencia exacta
+        if numero_parte in descripcion:
+            coincidencia = 100
+            posicion = descripcion.find(numero_parte)
+        else:
+            # Buscar coincidencia parcial
+            partes = numero_parte.split()
+            max_coincidencia = 0
+            posicion = -1
+            
+            # Buscar cada parte por separado
+            for parte in partes:
+                if len(parte) >= 3 and parte in descripcion:
+                    coincidencia_parcial = (len(parte) / len(numero_parte)) * 100
+                    if coincidencia_parcial > max_coincidencia:
+                        max_coincidencia = coincidencia_parcial
+                        posicion = descripcion.find(parte)
+            
+            # Si no hay coincidencia parcial, buscar caracteres similares
+            if max_coincidencia == 0:
+                # Usar SequenceMatcher para comparar cadenas completas
+                matcher = SequenceMatcher(None, numero_parte, descripcion)
+                max_coincidencia = matcher.ratio() * 100
+                posicion = -1
+            
+            coincidencia = max_coincidencia
+        
+        # Solo incluir si la coincidencia supera el umbral
+        if coincidencia >= umbral:
+            # Extraer contexto alrededor de la coincidencia
+            contexto = ""
+            if posicion >= 0:
+                inicio = max(0, posicion - 30)
+                fin = min(len(descripcion), posicion + len(numero_parte) + 30)
+                contexto = descripcion[inicio:fin].replace(numero_parte, f'**{numero_parte}**')
+            
+            resultados.append({
+                'ID': row['ID_ProductoOfertado'],
+                'descripcion': row['descripcion'],
+                'marca': row.get('marca', 'Desconocida'),
+                'categoria': row.get('categoria', 'Desconocida'),
+                'precio': row.get('precio', '0'),
+                'estado_ficha': row.get('estado_ficha', ''),
+                'estado_oferta': row.get('estado_oferta', ''),
+                'fecha_publicacion': row.get('fecha_publicacion', ''),
+                'fecha_adjudicacion': row.get('fecha_adjudicacion', ''),
+                'coincidencia': round(coincidencia, 2),
+                'contexto': contexto,
+                'es_activo': row.get('es_activo', False),
+                'es_junio_2026': row.get('es_junio_2026', False)
+            })
+    
+    if not resultados:
+        return None
+    
+    # Ordenar por coincidencia (mayor primero)
+    resultados_df = pd.DataFrame(resultados)
+    resultados_df = resultados_df.sort_values('coincidencia', ascending=False)
+    
+    return resultados_df
+
+def mostrar_resultados_busqueda(resultados_df, numero_parte):
+    """Muestra los resultados de la búsqueda en formato tabla y tarjetas"""
+    
+    if resultados_df is None or resultados_df.empty:
+        st.warning(f"🔍 No se encontraron resultados para '{numero_parte}'")
+        return
+    
+    st.markdown(f"""
+    <div class="result-card">
+        <div class="title">🔍 Resultados para: {numero_parte}</div>
+        <div class="subtitle">Se encontraron {len(resultados_df)} coincidencias</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Resumen rápido
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Total Coincidencias", len(resultados_df))
+    with col2:
+        activos = resultados_df[resultados_df['es_activo'] == True].shape[0]
+        st.metric("✅ Activos", activos)
+    with col3:
+        junio = resultados_df[resultados_df['es_junio_2026'] == True].shape[0]
+        st.metric("📅 Junio 2026", junio)
+    
+    st.divider()
+    
+    # ============ TABLA PRINCIPAL ============
+    st.subheader("📋 Lista de Coincidencias")
+    
+    # Preparar tabla
+    tabla_show = resultados_df[[
+        'ID', 'marca', 'categoria', 'precio', 
+        'estado_ficha', 'estado_oferta', 'fecha_publicacion', 
+        'coincidencia', 'es_activo'
+    ]].copy()
+    
+    # Formatear columnas
+    tabla_show['coincidencia'] = tabla_show['coincidencia'].apply(lambda x: f"{x}%")
+    tabla_show['estado'] = tabla_show.apply(
+        lambda row: '🟢 Activo' if row['es_activo'] else '🔴 Inactivo', axis=1
+    )
+    tabla_show['precio'] = tabla_show['precio'].apply(lambda x: f"${float(x):,.2f}" if x else "$0")
+    
+    # Renombrar columnas
+    tabla_show.columns = ['ID', 'Marca', 'Categoría', 'Precio', 
+                         'Estado Ficha', 'Estado Oferta', 'Fecha Publicación', 
+                         'Coincidencia', 'Activo', 'Estado']
+    
+    # Mostrar tabla
+    st.dataframe(tabla_show, use_container_width=True, height=300)
+    
+    st.divider()
+    
+    # ============ DETALLE POR PRODUCTO ============
+    st.subheader("📄 Detalle por Producto")
+    
+    for idx, row in resultados_df.iterrows():
+        # Color de borde según coincidencia
+        border_color = "#28a745" if row['coincidencia'] >= 90 else "#ffc107" if row['coincidencia'] >= 70 else "#dc3545"
+        
+        # Estado visual
+        estado_icon = "🟢" if row['es_activo'] else "🔴"
+        estado_texto = "ACTIVO (OFERTADA + VIGENTE)" if row['es_activo'] else "INACTIVO"
+        estado_color = "#28a745" if row['es_activo'] else "#dc3545"
+        
+        # Destacar si es de Junio 2026
+        junio_badge = " 🏷️ JUNIO 2026" if row['es_junio_2026'] else ""
+        
+        # Nivel de coincidencia
+        if row['coincidencia'] >= 90:
+            nivel = "✅ Alta"
+            nivel_color = "#28a745"
+        elif row['coincidencia'] >= 70:
+            nivel = "⚠️ Media"
+            nivel_color = "#ffc107"
+        else:
+            nivel = "❌ Baja"
+            nivel_color = "#dc3545"
+        
+        st.markdown(f"""
+        <div style="background: white; padding: 1.5rem; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin: 1rem 0; border-left: 4px solid {border_color};">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+                <div>
+                    <span style="font-size: 1.2rem; font-weight: bold;">ID: {row['ID']}</span>
+                    <span style="margin-left: 1rem; font-size: 0.9rem; color: #666;">Marca: {row['marca']}</span>
+                    <span style="margin-left: 1rem; font-size: 0.9rem; color: #666;">Categoría: {row['categoria']}</span>
+                </div>
+                <div>
+                    <span style="background: {estado_color}; color: white; padding: 0.3rem 0.8rem; border-radius: 20px; font-weight: bold; font-size: 0.8rem;">{estado_icon} {estado_texto}</span>
+                    <span style="margin-left: 0.5rem; background: {nivel_color}; color: {'white' if row['coincidencia'] >= 90 else '#333'}; padding: 0.3rem 0.8rem; border-radius: 20px; font-weight: bold; font-size: 0.8rem;">{nivel}: {row['coincidencia']}%</span>
+                    <span style="margin-left: 0.5rem; background: #667eea; color: white; padding: 0.3rem 0.8rem; border-radius: 20px; font-weight: bold; font-size: 0.8rem;">💰 ${float(row['precio']):,.2f}</span>
+                    {f'<span style="margin-left: 0.5rem; background: #764ba2; color: white; padding: 0.3rem 0.8rem; border-radius: 20px; font-weight: bold; font-size: 0.8rem;">📅 {row["fecha_publicacion"]}</span>' if row['fecha_publicacion'] else ''}
+                </div>
+            </div>
+            <div style="margin-top: 0.8rem; padding: 0.8rem; background: #f8f9fa; border-radius: 5px; font-size: 0.9rem;">
+                <strong>Descripción:</strong> {row['descripcion'][:200]}...
+            </div>
+            <div style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 1rem; font-size: 0.85rem; color: #666;">
+                <span><strong>Estado Ficha:</strong> {row['estado_ficha']}</span>
+                <span><strong>Estado Oferta:</strong> {row['estado_oferta']}</span>
+                <span><strong>Fecha Publicación:</strong> {row['fecha_publicacion']}</span>
+                <span><strong>Fecha Adjudicación:</strong> {row['fecha_adjudicacion']}</span>
+            </div>
+            <div style="margin-top: 0.5rem; font-size: 0.85rem;">
+                <span style="background: #e9ecef; padding: 0.2rem 0.5rem; border-radius: 4px;">
+                    🔍 Contexto: ...{row['contexto']}...
+                </span>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
 # ============ CACHING DE DATOS ============
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -161,15 +357,14 @@ def procesar_datos(df):
     if df is None or df.empty:
         return None
     
-    # Copiar para no modificar el original
     df_proc = df.copy()
     
-    # Convertir fechas (optimizado)
+    # Convertir fechas
     df_proc['fecha_publicacion_dt'] = df_proc['fecha_publicacion'].apply(convertir_fecha)
     df_proc['fecha_registro_dt'] = df_proc['fecha_registro'].apply(convertir_fecha)
     df_proc['fecha_adjudicacion_dt'] = df_proc['fecha_adjudicacion'].apply(convertir_fecha)
     
-    # Extraer marca y categoría (optimizado con vectorización)
+    # Extraer marca y categoría
     df_proc['marca'] = df_proc['descripcion'].apply(extraer_marca)
     df_proc['categoria'] = df_proc['descripcion'].apply(extraer_categoria)
     
@@ -197,12 +392,10 @@ def extraer_marca(descripcion):
     
     desc_upper = descripcion.upper()
     
-    # Buscar en la lista de marcas (ordenadas por longitud para coincidencia exacta)
     for marca in sorted(MARCAS_COMPLETAS, key=len, reverse=True):
         if marca.upper() in desc_upper:
             return marca
     
-    # Fallback para marcas comunes
     if "HP" in desc_upper:
         return "HP"
     elif "LENOVO" in desc_upper:
@@ -225,12 +418,10 @@ def extraer_categoria(descripcion):
     
     desc_upper = descripcion.upper()
     
-    # Buscar en categorías oficiales
     for nombre in CATEGORIAS_NOMBRES:
         if nombre.upper() in desc_upper:
             return nombre
     
-    # Fallback
     if "PORTATIL" in desc_upper or "NOTEBOOK" in desc_upper or "LAPTOP" in desc_upper:
         return "COMPUTADORA PORTATIL"
     elif "ESCRITORIO" in desc_upper or "DESKTOP" in desc_upper or "TORRE" in desc_upper:
@@ -265,7 +456,7 @@ def calcular_estadisticas(df):
     
     return stats
 
-# ============ FUNCIONES DE UI OPTIMIZADAS ============
+# ============ FUNCIONES DE UI ============
 def mostrar_filtros(df):
     """Muestra filtros optimizados"""
     st.sidebar.markdown("---")
@@ -273,7 +464,6 @@ def mostrar_filtros(df):
     
     df_filtrado = df.copy()
     
-    # Filtros con valores únicos pre-calculados
     categorias_opciones = ['Todas'] + sorted(df['categoria'].unique().tolist())
     categoria_seleccionada = st.sidebar.selectbox("Categoria:", categorias_opciones, key="filtro_categoria")
     
@@ -299,7 +489,7 @@ def mostrar_filtros(df):
     
     return df_filtrado
 
-def mostrar_metricas(stats, titulo="Métricas"):
+def mostrar_metricas(stats):
     """Muestra métricas en cards"""
     if stats is None:
         return
@@ -394,7 +584,6 @@ def mostrar_analisis_fechas_optimizado(df):
         st.warning("No hay datos para mostrar")
         return
     
-    # Usar solo fechas válidas
     df_fechas = df.dropna(subset=['fecha_publicacion_dt']).copy()
     
     if df_fechas.empty:
@@ -405,7 +594,6 @@ def mostrar_analisis_fechas_optimizado(df):
     df_fechas['mes'] = df_fechas['fecha_publicacion_dt'].dt.month
     df_fechas['mes_nombre'] = df_fechas['fecha_publicacion_dt'].dt.strftime('%B')
     
-    # Filtros en la misma pestaña
     col1, col2 = st.columns(2)
     
     with col1:
@@ -418,7 +606,6 @@ def mostrar_analisis_fechas_optimizado(df):
         meses_opciones = ['Todos'] + [meses_nombres[m] for m in sorted(df_fechas['mes'].unique())]
         mes_sel = st.selectbox("Mes:", meses_opciones, key="fecha_mes")
     
-    # Aplicar filtros
     if año_sel != 'Todos':
         df_fechas = df_fechas[df_fechas['año'] == año_sel]
     
@@ -432,7 +619,6 @@ def mostrar_analisis_fechas_optimizado(df):
     
     st.info(f"Mostrando {len(df_fechas)} registros")
     
-    # Métricas rápidas
     c1, c2, c3 = st.columns(3)
     with c1:
         st.metric("Total", len(df_fechas))
@@ -443,7 +629,6 @@ def mostrar_analisis_fechas_optimizado(df):
         if not df_fechas.empty:
             st.metric("Hasta", df_fechas['fecha_publicacion_dt'].max().strftime('%d/%m/%Y'))
     
-    # Gráfico simplificado
     if año_sel != 'Todos':
         df_meses = df_fechas.groupby('mes_nombre').size().reset_index(name='Cantidad')
         fig = px.bar(df_meses, x='mes_nombre', y='Cantidad', 
@@ -458,6 +643,51 @@ def mostrar_analisis_fechas_optimizado(df):
                     color='año')
         fig.update_layout(height=350, showlegend=False)
         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+# ============ BUSCADOR ============
+def mostrar_buscador(df):
+    """Muestra el buscador de número de parte"""
+    st.subheader("🔍 Buscador de Número de Parte")
+    
+    st.markdown("""
+    <div class="search-container">
+        <p>Ingresa un número de parte para buscar en todas las descripciones de productos.</p>
+        <p style="font-size: 0.9rem; color: #666;">Ejemplo: <strong>MDP2605F5ZZC2</strong></p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Input de búsqueda
+    numero_parte = st.text_input(
+        "Número de Parte:",
+        placeholder="Ej: MDP2605F5ZZC2",
+        key="buscador_input"
+    )
+    
+    # Umbral de coincidencia
+    umbral = st.slider(
+        "Umbral de coincidencia (%)",
+        min_value=50,
+        max_value=100,
+        value=60,
+        step=5,
+        help="Porcentaje mínimo de coincidencia para mostrar un resultado"
+    )
+    
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        buscar_click = st.button("🔍 Buscar", use_container_width=True, type="primary")
+    
+    with col2:
+        if st.button("🔄 Limpiar", use_container_width=True):
+            st.session_state.buscador_input = ""
+            st.rerun()
+    
+    if buscar_click and numero_parte:
+        with st.spinner(f"Buscando '{numero_parte}'..."):
+            resultados = buscar_numero_parte(df, numero_parte, umbral)
+            mostrar_resultados_busqueda(resultados, numero_parte)
+    elif buscar_click and not numero_parte:
+        st.warning("Por favor, ingresa un número de parte para buscar")
 
 # ============ MAIN ============
 def main():
@@ -565,7 +795,6 @@ def main():
         
         st.divider()
         
-        # Gráficos de Junio
         col1, col2 = st.columns(2)
         with col1:
             if stats_junio['por_marca']:
@@ -591,8 +820,6 @@ def main():
                 st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
         
         st.divider()
-        
-        # Tabla de Junio
         mostrar_tabla(df_junio, "📋 Detalle - Junio 2026")
     
     else:
@@ -607,8 +834,8 @@ def main():
     </div>
     """, unsafe_allow_html=True)
     
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "📊 Resumen", "🏷️ Marcas", "📂 Categorías", "📅 Fechas", "📋 Datos"
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+        "📊 Resumen", "🏷️ Marcas", "📂 Categorías", "📅 Fechas", "🔍 Buscador", "📋 Datos"
     ])
     
     with tab1:
@@ -646,9 +873,11 @@ def main():
         mostrar_analisis_fechas_optimizado(df_filtrado)
     
     with tab5:
+        mostrar_buscador(df_filtrado)
+    
+    with tab6:
         mostrar_tabla(df_filtrado, "📋 Todos los Productos")
         
-        # Exportar
         st.subheader("💾 Exportar")
         col1, col2 = st.columns(2)
         
