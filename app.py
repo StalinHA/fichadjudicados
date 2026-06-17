@@ -32,17 +32,39 @@ MARCAS_COMPLETAS = [
     'CANON', 'BOOKEYE', 'JFA TECHNOLOGY', 'AMC', 'MAXTIC', 'SANDISK', 'KINGSTON', 'ADATA', 'NEW KRAL'
 ]
 
+# ============ CATEGORIAS OFICIALES ============
+CATEGORIAS_OFICIALES = {
+    '11743': 'COMPUTADORA PORTATIL',
+    '11744': 'ESTACION DE TRABAJO PORTATIL',
+    '11745': 'TABLETA',
+    '11738': 'ESCANER DE DOCUMENTOS',
+    '11735': 'COMPUTADORA DE ESCRITORIO',
+    '11736': 'COMPUTADORA TODO EN UNO',
+    '11740': 'ESTACION DE TRABAJO',
+    '11741': 'MONITOR',
+    '11742': 'PANTALLA PUBLICITARIA',
+    '11747': 'DISPOSITIVOS DE ALMACENAMIENTO EXTERNO',
+    '11749': 'PANTALLA INTERACTIVA',
+    '11751': 'DISPOSITIVOS DE ALMACENAMIENTO INTERNO'
+}
+
+# Lista de nombres de categorías para búsqueda
+CATEGORIAS_NOMBRES = list(CATEGORIAS_OFICIALES.values())
+
 # Estilos CSS personalizados
 st.markdown("""
 <style>
     .main-header {
         font-size: 2.5rem;
-        color: #1f77b4;
+        color: #1f77b4 !important;
         text-align: center;
         padding: 1rem;
         background: linear-gradient(90deg, #f0f2f6, #ffffff);
         border-radius: 10px;
         margin-bottom: 2rem;
+    }
+    .main-header h1 {
+        color: #1f77b4 !important;
     }
     .metric-card {
         background: white;
@@ -64,12 +86,12 @@ st.markdown("""
     }
     .metric-label {
         font-size: 0.9rem;
-        color: #666;
+        color: #333;
         margin-top: 0.5rem;
     }
     .metric-sub {
         font-size: 0.8rem;
-        color: #999;
+        color: #666;
         margin-top: 0.2rem;
     }
     .stTabs [data-baseweb="tab-list"] {
@@ -82,10 +104,11 @@ st.markdown("""
         border-radius: 5px;
         padding: 10px 20px;
         font-weight: bold;
+        color: #333;
     }
     .stTabs [aria-selected="true"] {
         background-color: #1f77b4;
-        color: white;
+        color: white !important;
     }
     .info-box {
         background-color: #cce5ff;
@@ -95,6 +118,9 @@ st.markdown("""
         border: 1px solid #b8daff;
         margin: 1rem 0;
     }
+    .info-box strong {
+        color: #004085;
+    }
     .success-box {
         background-color: #d4edda;
         color: #155724;
@@ -103,6 +129,9 @@ st.markdown("""
         border: 1px solid #c3e6cb;
         margin: 1rem 0;
     }
+    .success-box strong {
+        color: #155724;
+    }
     .estado-activo {
         background-color: #28a745;
         color: white;
@@ -110,6 +139,44 @@ st.markdown("""
         border-radius: 20px;
         display: inline-block;
         font-weight: bold;
+    }
+    /* Corregir colores de texto */
+    .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4 {
+        color: #1f77b4 !important;
+    }
+    .stMarkdown p, .stMarkdown li {
+        color: #333 !important;
+    }
+    .stMarkdown strong {
+        color: #1f77b4 !important;
+    }
+    /* Tarjeta de Junio */
+    .junio-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 1.5rem;
+        border-radius: 15px;
+        margin: 1rem 0;
+        text-align: center;
+    }
+    .junio-header h2 {
+        color: white !important;
+        margin: 0;
+    }
+    .junio-header p {
+        color: rgba(255,255,255,0.9) !important;
+        margin: 0;
+    }
+    /* Tarjeta de análisis completo */
+    .analisis-header {
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        padding: 1rem;
+        border-radius: 10px;
+        margin: 1rem 0;
+        text-align: center;
+    }
+    .analisis-header h2 {
+        color: white !important;
+        margin: 0;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -259,13 +326,17 @@ class ProductAnalyzer:
             errors='coerce'
         )
         
-        # Extraer marca y categoria
+        # Extraer marca
         self.df['marca'] = self.df['descripcion'].apply(self._extract_brand)
-        self.df['categoria'] = self.df['descripcion'].apply(self._extract_category)
+        
+        # Extraer categoria usando las categorías oficiales
+        self.df['categoria'] = self.df['descripcion'].apply(self._extract_category_oficial)
+        self.df['categoria_codigo'] = self.df['categoria'].apply(self._get_categoria_codigo)
+        
+        # Convertir precio
         self.df['precio_float'] = pd.to_numeric(self.df['precio'], errors='coerce')
         
-        # ============ ESTADO ACTIVO ============
-        # Una ficha está ACTIVA si estado_ficha = "OFERTADA" Y estado_oferta = "VIGENTE"
+        # Estado activo: estado_ficha = "OFERTADA" Y estado_oferta = "VIGENTE"
         self.df['es_activo'] = (self.df['estado_ficha'] == 'OFERTADA') & (self.df['estado_oferta'] == 'VIGENTE')
         
         # Filtrar Junio 2026
@@ -305,24 +376,47 @@ class ProductAnalyzer:
         
         return "Otra"
     
-    def _extract_category(self, descripcion):
-        """Extrae la categoria de la descripcion"""
+    def _extract_category_oficial(self, descripcion):
+        """Extrae la categoria usando las categorías oficiales"""
         if not isinstance(descripcion, str):
-            return "Desconocida"
+            return "Sin Categoria"
         
         desc_upper = descripcion.upper()
+        
+        # Buscar por nombre de categoría
+        for nombre in CATEGORIAS_NOMBRES:
+            if nombre.upper() in desc_upper:
+                return nombre
+        
+        # Si no encuentra, usar la detección genérica
         if "PORTATIL" in desc_upper or "NOTEBOOK" in desc_upper or "LAPTOP" in desc_upper:
-            return "Portatil"
+            return "COMPUTADORA PORTATIL"
         elif "ESCRITORIO" in desc_upper or "DESKTOP" in desc_upper or "TORRE" in desc_upper:
-            return "Escritorio"
+            return "COMPUTADORA DE ESCRITORIO"
         elif "SERVIDOR" in desc_upper or "SERVER" in desc_upper:
-            return "Servidor"
+            return "ESTACION DE TRABAJO"
         elif "MONITOR" in desc_upper or "PANTALLA" in desc_upper:
-            return "Monitor"
-        elif "IMPRESORA" in desc_upper or "PRINTER" in desc_upper:
-            return "Impresora"
-        else:
-            return "Otro"
+            if "INTERACTIVA" in desc_upper:
+                return "PANTALLA INTERACTIVA"
+            return "MONITOR"
+        elif "TABLETA" in desc_upper:
+            return "TABLETA"
+        elif "ESCANER" in desc_upper:
+            return "ESCANER DE DOCUMENTOS"
+        elif "ALMACENAMIENTO" in desc_upper:
+            if "EXTERNO" in desc_upper:
+                return "DISPOSITIVOS DE ALMACENAMIENTO EXTERNO"
+            else:
+                return "DISPOSITIVOS DE ALMACENAMIENTO INTERNO"
+        
+        return "Otro"
+    
+    def _get_categoria_codigo(self, categoria):
+        """Obtiene el código de la categoría"""
+        for codigo, nombre in CATEGORIAS_OFICIALES.items():
+            if nombre == categoria:
+                return codigo
+        return ""
     
     def get_stats(self, df_filtered=None):
         """Obtiene estadisticas del DataFrame filtrado"""
@@ -355,7 +449,7 @@ def mostrar_filtros(df):
     
     df_filtrado = df.copy()
     
-    # Filtro por categoria
+    # Filtro por categoria (usando las categorías oficiales)
     categorias = ['Todas'] + sorted(df['categoria'].unique().tolist())
     categoria_seleccionada = st.sidebar.selectbox("📂 Filtrar por Categoria:", categorias)
     
@@ -370,10 +464,10 @@ def mostrar_filtros(df):
         df_filtrado = df_filtrado[df_filtrado['marca'] == marca_seleccionada]
     
     # Filtro por estado
-    estados = ['Todos', 'Activos (OFERTADA + VIGENTE)'] + sorted(df['estado_ficha'].unique().tolist())
+    estados = ['Todos', '✅ Activos (OFERTADA + VIGENTE)'] + sorted(df['estado_ficha'].unique().tolist())
     estado_seleccionado = st.sidebar.selectbox("📊 Filtrar por Estado:", estados)
     
-    if estado_seleccionado == 'Activos (OFERTADA + VIGENTE)':
+    if estado_seleccionado == '✅ Activos (OFERTADA + VIGENTE)':
         df_filtrado = df_filtrado[df_filtrado['es_activo'] == True]
     elif estado_seleccionado != 'Todos':
         df_filtrado = df_filtrado[df_filtrado['estado_ficha'] == estado_seleccionado]
@@ -498,6 +592,7 @@ def mostrar_analisis_fechas(df):
     st.plotly_chart(fig, use_container_width=True)
 
 def main():
+    # Título principal
     st.markdown('<h1 class="main-header">📊 Dashboard de Analisis de Productos</h1>', unsafe_allow_html=True)
     
     if 'analyzer' not in st.session_state:
@@ -552,8 +647,9 @@ def main():
     df_junio = df[df['es_junio_2026'] == True]
     
     st.markdown("""
-    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem; border-radius: 15px; margin: 1rem 0;">
-        <h2 style="color: white; text-align: center; margin: 0;">📊 RESULTADOS DE JUNIO 2026</h2>
+    <div class="junio-header">
+        <h2>📊 RESULTADOS DE JUNIO 2026</h2>
+        <p>Fichas con fecha de publicación en Junio 2026</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -564,7 +660,7 @@ def main():
         
         with col1:
             st.markdown(f"""
-            <div class="metric-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+            <div class="metric-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
                 <div class="metric-value" style="color: white;">{stats_junio['total']}</div>
                 <div class="metric-label" style="color: white;">📦 Fichas Nuevas</div>
                 <div class="metric-sub" style="color: rgba(255,255,255,0.8);">Incorporadas en Junio 2026</div>
@@ -600,10 +696,10 @@ def main():
         
         with col5:
             st.markdown(f"""
-            <div class="metric-card">
-                <div class="metric-value">{stats_junio['activos']}</div>
-                <div class="metric-label">✅ Fichas Activas</div>
-                <div class="metric-sub">OFERTADA + VIGENTE</div>
+            <div class="metric-card" style="background: #28a745; color: white;">
+                <div class="metric-value" style="color: white;">{stats_junio['activos']}</div>
+                <div class="metric-label" style="color: white;">✅ Fichas Activas</div>
+                <div class="metric-sub" style="color: rgba(255,255,255,0.8);">OFERTADA + VIGENTE</div>
             </div>
             """, unsafe_allow_html=True)
         
@@ -660,14 +756,14 @@ def main():
             st.markdown(href_json, unsafe_allow_html=True)
     
     else:
-        st.warning("📊 No se encontraron fichas nuevas en Junio 2026")
+        st.warning("📊 No se encontraron fichas con fecha de publicación en Junio 2026")
     
     st.divider()
     
     # ============ PESTAÑAS PRINCIPALES ============
     st.markdown("""
-    <div style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); padding: 1rem; border-radius: 10px; margin: 1rem 0;">
-        <h2 style="color: white; text-align: center; margin: 0;">📊 ANALISIS COMPLETO DE TODOS LOS PRODUCTOS</h2>
+    <div class="analisis-header">
+        <h2>📊 ANALISIS COMPLETO DE TODOS LOS PRODUCTOS</h2>
     </div>
     """, unsafe_allow_html=True)
     
