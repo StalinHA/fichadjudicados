@@ -10,7 +10,6 @@ from io import BytesIO
 import zipfile
 import io
 import re
-import time
 from difflib import SequenceMatcher
 
 # Configuración de la página
@@ -71,6 +70,8 @@ st.markdown("""
     .badge-activo {background: #28a745; color: white; padding: 0.2rem 0.8rem; border-radius: 20px; font-weight: bold; font-size: 0.8rem;}
     .badge-inactivo {background: #dc3545; color: white; padding: 0.2rem 0.8rem; border-radius: 20px; font-weight: bold; font-size: 0.8rem;}
     .badge-junio {background: #764ba2; color: white; padding: 0.2rem 0.8rem; border-radius: 20px; font-weight: bold; font-size: 0.8rem;}
+    .result-header {background: #d4edda; padding: 1rem; border-radius: 10px; margin: 1rem 0; border-left: 4px solid #28a745;}
+    .no-result {background: #f8d7da; padding: 1rem; border-radius: 10px; margin: 1rem 0; border-left: 4px solid #dc3545;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -107,7 +108,6 @@ def buscar_numero_parte(df, numero_parte, umbral=40):
         descripcion = str(row['descripcion'])
         descripcion_normalizada = normalizar_texto(descripcion)
         
-        # Estrategias de búsqueda
         coincidencia = 0
         
         # 1. Búsqueda exacta del número normalizado
@@ -136,12 +136,9 @@ def buscar_numero_parte(df, numero_parte, umbral=40):
                         break
         
         if coincidencia >= umbral:
-            # Determinar si es coincidencia exacta
-            es_exacta = coincidencia >= 90
-            
             resultados.append({
                 'ID': row['ID_ProductoOfertado'],
-                'descripcion': row['descripcion'][:200] + '...' if len(str(row['descripcion'])) > 200 else row['descripcion'],
+                'descripcion': row['descripcion'],
                 'marca': row.get('marca', 'Desconocida'),
                 'categoria': row.get('categoria', 'Desconocida'),
                 'precio': row.get('precio', '0'),
@@ -151,8 +148,7 @@ def buscar_numero_parte(df, numero_parte, umbral=40):
                 'fecha_adjudicacion': row.get('fecha_adjudicacion', ''),
                 'coincidencia': round(coincidencia, 1),
                 'es_activo': row.get('es_activo', False),
-                'es_junio_2026': row.get('es_junio_2026', False),
-                'es_exacta': es_exacta
+                'es_junio_2026': row.get('es_junio_2026', False)
             })
     
     if not resultados:
@@ -565,95 +561,104 @@ def mostrar_buscador(df):
     with col1:
         buscar_click = st.button("🔍 Buscar", use_container_width=True, type="primary")
     
-    with col2:
-        if st.button("🔄 Limpiar", use_container_width=True):
-            st.session_state.buscador_input = ""
-            st.rerun()
+    # Variable para almacenar resultados en session_state
+    if 'resultados_busqueda' not in st.session_state:
+        st.session_state.resultados_busqueda = None
+    if 'ultima_busqueda' not in st.session_state:
+        st.session_state.ultima_busqueda = ""
     
     if buscar_click and numero_parte:
         with st.spinner(f"Buscando '{numero_parte}'..."):
             resultados_df = buscar_numero_parte(df, numero_parte, umbral)
-            
-            if resultados_df is not None and not resultados_df.empty:
-                # ============ MOSTRAR RESULTADOS EN TABLA ============
-                st.markdown(f"""
-                <div style="background: #d4edda; padding: 1rem; border-radius: 10px; margin: 1rem 0; border-left: 4px solid #28a745;">
-                    <strong>🔍 Resultados para: {numero_parte}</strong><br>
-                    Se encontraron <strong>{len(resultados_df)}</strong> coincidencias
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # Métricas rápidas
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    st.metric("Total", len(resultados_df))
-                with col2:
-                    activos = resultados_df[resultados_df['es_activo'] == True].shape[0]
-                    st.metric("✅ Activos", activos)
-                with col3:
-                    junio = resultados_df[resultados_df['es_junio_2026'] == True].shape[0]
-                    st.metric("📅 Junio 2026", junio)
-                with col4:
-                    max_coinc = resultados_df['coincidencia'].max()
-                    st.metric("🎯 Mejor coincidencia", f"{max_coinc}%")
-                
-                st.divider()
-                
-                # ============ TABLA PRINCIPAL ============
-                # Preparar tabla para mostrar
-                tabla_show = resultados_df[[
-                    'ID', 'marca', 'categoria', 'precio', 
-                    'estado_ficha', 'estado_oferta', 'fecha_publicacion', 
-                    'coincidencia', 'es_activo', 'es_junio_2026'
-                ]].copy()
-                
-                # Formatear columnas
-                tabla_show['coincidencia'] = tabla_show['coincidencia'].apply(lambda x: f"{x}%")
-                tabla_show['precio'] = tabla_show['precio'].apply(lambda x: f"${float(x):,.2f}" if x else "$0")
-                tabla_show['estado'] = tabla_show['es_activo'].apply(
-                    lambda x: '🟢 Activo' if x else '🔴 Inactivo'
-                )
-                tabla_show['junio'] = tabla_show['es_junio_2026'].apply(
-                    lambda x: '✅ Junio 2026' if x else ''
-                )
-                tabla_show['descripcion'] = resultados_df['descripcion']
-                
-                # Reordenar y renombrar columnas
-                tabla_show = tabla_show[[
-                    'ID', 'descripcion', 'marca', 'categoria', 'precio', 
-                    'estado', 'estado_ficha', 'estado_oferta', 
-                    'fecha_publicacion', 'coincidencia', 'junio'
-                ]]
-                
-                tabla_show.columns = [
-                    'ID', 'Descripción', 'Marca', 'Categoría', 'Precio (USD)',
-                    'Estado', 'Estado Ficha', 'Estado Oferta', 
-                    'Fecha Publicación', 'Coincidencia', 'Junio 2026'
-                ]
-                
-                st.dataframe(tabla_show, use_container_width=True, height=500)
-                
-                # ============ BOTÓN DE EXPORTACIÓN ============
-                st.subheader("💾 Exportar Resultados")
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    csv = resultados_df.to_csv(index=False)
-                    b64 = base64.b64encode(csv.encode()).decode()
-                    href = f'<a href="data:file/csv;base64,{b64}" download="busqueda_{numero_parte}.csv" style="background-color: #1f77b4; color: white; padding: 8px 16px; border-radius: 5px; text-decoration: none;">📥 Descargar CSV</a>'
-                    st.markdown(href, unsafe_allow_html=True)
-                
-                with col2:
-                    json_str = resultados_df.to_json(orient='records', date_format='iso')
-                    b64_json = base64.b64encode(json_str.encode()).decode()
-                    href_json = f'<a href="data:file/json;base64,{b64_json}" download="busqueda_{numero_parte}.json" style="background-color: #28a745; color: white; padding: 8px 16px; border-radius: 5px; text-decoration: none;">📥 Descargar JSON</a>'
-                    st.markdown(href_json, unsafe_allow_html=True)
-                
-            else:
-                st.warning(f"🔍 No se encontraron resultados para '{numero_parte}'")
+            st.session_state.resultados_busqueda = resultados_df
+            st.session_state.ultima_busqueda = numero_parte
     
-    elif buscar_click and not numero_parte:
-        st.warning("Por favor, ingresa un número de parte para buscar")
+    # Mostrar resultados si existen
+    if st.session_state.resultados_busqueda is not None:
+        resultados_df = st.session_state.resultados_busqueda
+        
+        if not resultados_df.empty:
+            # ============ MOSTRAR RESULTADOS EN TABLA ============
+            st.markdown(f"""
+            <div class="result-header">
+                <strong>🔍 Resultados para: {st.session_state.ultima_busqueda}</strong><br>
+                Se encontraron <strong>{len(resultados_df)}</strong> coincidencias
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Métricas rápidas
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total", len(resultados_df))
+            with col2:
+                activos = resultados_df[resultados_df['es_activo'] == True].shape[0]
+                st.metric("✅ Activos", activos)
+            with col3:
+                junio = resultados_df[resultados_df['es_junio_2026'] == True].shape[0]
+                st.metric("📅 Junio 2026", junio)
+            with col4:
+                max_coinc = resultados_df['coincidencia'].max()
+                st.metric("🎯 Mejor coincidencia", f"{max_coinc}%")
+            
+            st.divider()
+            
+            # ============ TABLA PRINCIPAL ============
+            # Preparar tabla para mostrar
+            tabla_show = resultados_df[[
+                'ID', 'marca', 'categoria', 'precio', 
+                'estado_ficha', 'estado_oferta', 'fecha_publicacion', 
+                'coincidencia', 'es_activo', 'es_junio_2026'
+            ]].copy()
+            
+            # Formatear columnas
+            tabla_show['coincidencia'] = tabla_show['coincidencia'].apply(lambda x: f"{x}%")
+            tabla_show['precio'] = tabla_show['precio'].apply(lambda x: f"${float(x):,.2f}" if x else "$0")
+            tabla_show['estado'] = tabla_show['es_activo'].apply(
+                lambda x: '🟢 Activo' if x else '🔴 Inactivo'
+            )
+            tabla_show['junio'] = tabla_show['es_junio_2026'].apply(
+                lambda x: '✅ Junio 2026' if x else ''
+            )
+            tabla_show['descripcion'] = resultados_df['descripcion'].str[:150] + '...'
+            
+            # Reordenar y renombrar columnas
+            tabla_show = tabla_show[[
+                'ID', 'descripcion', 'marca', 'categoria', 'precio', 
+                'estado', 'estado_ficha', 'estado_oferta', 
+                'fecha_publicacion', 'coincidencia', 'junio'
+            ]]
+            
+            tabla_show.columns = [
+                'ID', 'Descripción', 'Marca', 'Categoría', 'Precio (USD)',
+                'Estado', 'Estado Ficha', 'Estado Oferta', 
+                'Fecha Publicación', 'Coincidencia', 'Junio 2026'
+            ]
+            
+            st.dataframe(tabla_show, use_container_width=True, height=500)
+            
+            # ============ BOTÓN DE EXPORTACIÓN ============
+            st.subheader("💾 Exportar Resultados")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                csv = resultados_df.to_csv(index=False)
+                b64 = base64.b64encode(csv.encode()).decode()
+                href = f'<a href="data:file/csv;base64,{b64}" download="busqueda_{st.session_state.ultima_busqueda}.csv" style="background-color: #1f77b4; color: white; padding: 8px 16px; border-radius: 5px; text-decoration: none;">📥 Descargar CSV</a>'
+                st.markdown(href, unsafe_allow_html=True)
+            
+            with col2:
+                json_str = resultados_df.to_json(orient='records', date_format='iso')
+                b64_json = base64.b64encode(json_str.encode()).decode()
+                href_json = f'<a href="data:file/json;base64,{b64_json}" download="busqueda_{st.session_state.ultima_busqueda}.json" style="background-color: #28a745; color: white; padding: 8px 16px; border-radius: 5px; text-decoration: none;">📥 Descargar JSON</a>'
+                st.markdown(href_json, unsafe_allow_html=True)
+                
+        else:
+            st.markdown(f"""
+            <div class="no-result">
+                <strong>🔍 No se encontraron resultados para '{st.session_state.ultima_busqueda}'</strong><br>
+                Prueba con otro número de parte o reduce el umbral de coincidencia.
+            </div>
+            """, unsafe_allow_html=True)
 
 # ============ MAIN ============
 def main():
