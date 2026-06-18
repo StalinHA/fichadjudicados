@@ -11,6 +11,10 @@ import zipfile
 import io
 import re
 from difflib import SequenceMatcher
+import os
+
+# ============ CONFIGURACIÓN PARA HUGGING FACE SPACES ============
+os.environ['STREAMLIT_STATIC_URL_PREFIX'] = ''
 
 # Configuración de la página
 st.set_page_config(
@@ -51,30 +55,123 @@ CATEGORIAS_OFICIALES = {
 
 CATEGORIAS_NOMBRES = list(CATEGORIAS_OFICIALES.values())
 
-# Estilos CSS
+# ============ ESTILOS CSS ============
 st.markdown("""
 <style>
-    .main-header {font-size: 2.5rem; color: #1f77b4 !important; text-align: center; padding: 1rem; background: linear-gradient(90deg, #f0f2f6, #ffffff); border-radius: 10px; margin-bottom: 2rem;}
-    .metric-card {background: white; padding: 1.5rem; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; margin: 0.5rem 0;}
-    .metric-value {font-size: 2.5rem; font-weight: bold; color: #1f77b4;}
-    .metric-label {font-size: 0.9rem; color: #333; margin-top: 0.5rem;}
-    .metric-sub {font-size: 0.8rem; color: #666; margin-top: 0.2rem;}
-    .stTabs [data-baseweb="tab"] {height: 50px; background-color: #f0f2f6; border-radius: 5px; padding: 10px 20px; font-weight: bold; color: #333;}
-    .stTabs [aria-selected="true"] {background-color: #1f77b4; color: white !important;}
-    .junio-header {background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 1.5rem; border-radius: 15px; margin: 1rem 0; text-align: center;}
-    .junio-header h2 {color: white !important; margin: 0;}
-    .junio-header p {color: rgba(255,255,255,0.9) !important; margin: 0;}
-    .analisis-header {background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); padding: 1rem; border-radius: 10px; margin: 1rem 0; text-align: center;}
-    .analisis-header h2 {color: white !important; margin: 0;}
-    .search-container {background: #f8f9fa; padding: 1.5rem; border-radius: 10px; margin: 1rem 0;}
-    .badge-activo {background: #28a745; color: white; padding: 0.2rem 0.8rem; border-radius: 20px; font-weight: bold; font-size: 0.8rem;}
-    .badge-inactivo {background: #dc3545; color: white; padding: 0.2rem 0.8rem; border-radius: 20px; font-weight: bold; font-size: 0.8rem;}
-    .badge-junio {background: #764ba2; color: white; padding: 0.2rem 0.8rem; border-radius: 20px; font-weight: bold; font-size: 0.8rem;}
-    .result-header {background: #d4edda; padding: 1rem; border-radius: 10px; margin: 1rem 0; border-left: 4px solid #28a745;}
-    .no-result {background: #f8d7da; padding: 1rem; border-radius: 10px; margin: 1rem 0; border-left: 4px solid #dc3545;}
+    .main-header {
+        font-size: 2.5rem;
+        color: #1f77b4 !important;
+        text-align: center;
+        padding: 1rem;
+        background: linear-gradient(90deg, #f0f2f6, #ffffff);
+        border-radius: 10px;
+        margin-bottom: 2rem;
+    }
+    .metric-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        text-align: center;
+        margin: 0.5rem 0;
+        transition: transform 0.3s;
+    }
+    .metric-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+    .metric-value {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: #1f77b4;
+    }
+    .metric-label {
+        font-size: 0.9rem;
+        color: #333;
+        margin-top: 0.5rem;
+    }
+    .metric-sub {
+        font-size: 0.8rem;
+        color: #666;
+        margin-top: 0.2rem;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        background-color: #f0f2f6;
+        border-radius: 5px;
+        padding: 10px 20px;
+        font-weight: bold;
+        color: #333;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #1f77b4;
+        color: white !important;
+    }
+    .junio-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 1.5rem;
+        border-radius: 15px;
+        margin: 1rem 0;
+        text-align: center;
+    }
+    .junio-header h2 {
+        color: white !important;
+        margin: 0;
+    }
+    .junio-header p {
+        color: rgba(255,255,255,0.9) !important;
+        margin: 0;
+    }
+    .resumen-activo-header {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        padding: 1.5rem;
+        border-radius: 15px;
+        margin: 1rem 0;
+        text-align: center;
+    }
+    .resumen-activo-header h2 {
+        color: white !important;
+        margin: 0;
+    }
+    .resumen-activo-header p {
+        color: rgba(255,255,255,0.9) !important;
+        margin: 0;
+    }
+    .analisis-header {
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        padding: 1rem;
+        border-radius: 10px;
+        margin: 1rem 0;
+        text-align: center;
+    }
+    .analisis-header h2 {
+        color: white !important;
+        margin: 0;
+    }
+    .search-container {
+        background: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 10px;
+        margin: 1rem 0;
+    }
+    .result-header {
+        background: #d4edda;
+        padding: 1rem;
+        border-radius: 10px;
+        margin: 1rem 0;
+        border-left: 4px solid #28a745;
+    }
+    .no-result {
+        background: #f8d7da;
+        padding: 1rem;
+        border-radius: 10px;
+        margin: 1rem 0;
+        border-left: 4px solid #dc3545;
+    }
 </style>
 """, unsafe_allow_html=True)
 
+# ============ FUNCIONES DE UTILIDAD ============
 def convertir_fecha(fecha_str):
     """Convierte fechas con formato '13/06/2026 12:00:00 a. m.' a datetime"""
     if not isinstance(fecha_str, str):
@@ -85,7 +182,6 @@ def convertir_fecha(fecha_str):
     except:
         return pd.NaT
 
-# ============ FUNCION DE BUSQUEDA ============
 def normalizar_texto(texto):
     """Normaliza texto para búsqueda"""
     if not isinstance(texto, str):
@@ -94,8 +190,61 @@ def normalizar_texto(texto):
     texto = re.sub(r'[^A-Z0-9]', '', texto)
     return texto
 
+def extraer_marca(descripcion):
+    """Extrae la marca de la descripción"""
+    if not isinstance(descripcion, str):
+        return "Desconocida"
+    
+    desc_upper = descripcion.upper()
+    
+    for marca in sorted(MARCAS_COMPLETAS, key=len, reverse=True):
+        if marca.upper() in desc_upper:
+            return marca
+    
+    if "HP" in desc_upper:
+        return "HP"
+    elif "LENOVO" in desc_upper:
+        return "LENOVO"
+    elif "DELL" in desc_upper:
+        return "DELL"
+    elif "ASUS" in desc_upper:
+        return "ASUS"
+    elif "SAMSUNG" in desc_upper:
+        return "SAMSUNG"
+    elif "LG" in desc_upper:
+        return "LG"
+    
+    return "Otra"
+
+def extraer_categoria(descripcion):
+    """Extrae la categoría de la descripción"""
+    if not isinstance(descripcion, str):
+        return "Sin Categoria"
+    
+    desc_upper = descripcion.upper()
+    
+    for nombre in CATEGORIAS_NOMBRES:
+        if nombre.upper() in desc_upper:
+            return nombre
+    
+    if "PORTATIL" in desc_upper or "NOTEBOOK" in desc_upper or "LAPTOP" in desc_upper:
+        return "COMPUTADORA PORTATIL"
+    elif "ESCRITORIO" in desc_upper or "DESKTOP" in desc_upper or "TORRE" in desc_upper:
+        return "COMPUTADORA DE ESCRITORIO"
+    elif "SERVIDOR" in desc_upper or "SERVER" in desc_upper:
+        return "ESTACION DE TRABAJO"
+    elif "MONITOR" in desc_upper or "PANTALLA" in desc_upper:
+        return "MONITOR" if "INTERACTIVA" not in desc_upper else "PANTALLA INTERACTIVA"
+    elif "TABLETA" in desc_upper:
+        return "TABLETA"
+    elif "ESCANER" in desc_upper:
+        return "ESCANER DE DOCUMENTOS"
+    
+    return "Otro"
+
+# ============ FUNCIONES DE BÚSQUEDA ============
 def buscar_numero_parte(df, numero_parte, umbral=40):
-    """Busca número de parte en la descripción y retorna DataFrame con resultados"""
+    """Busca número de parte en la descripción"""
     if df is None or df.empty or not numero_parte:
         return None
     
@@ -110,11 +259,9 @@ def buscar_numero_parte(df, numero_parte, umbral=40):
         
         coincidencia = 0
         
-        # 1. Búsqueda exacta del número normalizado
         if numero_parte_normalizado and numero_parte_normalizado in descripcion_normalizada:
             coincidencia = 100
         else:
-            # 2. Buscar cada palabra del número de parte
             partes = numero_parte_original.split()
             for parte in partes:
                 parte_norm = normalizar_texto(parte)
@@ -122,12 +269,10 @@ def buscar_numero_parte(df, numero_parte, umbral=40):
                     coincidencia_parcial = (len(parte_norm) / len(numero_parte_normalizado)) * 100
                     coincidencia = max(coincidencia, min(100, coincidencia_parcial))
             
-            # 3. SequenceMatcher para comparar cadenas
             if coincidencia < 30:
                 matcher = SequenceMatcher(None, numero_parte_normalizado, descripcion_normalizada)
                 coincidencia = max(coincidencia, matcher.ratio() * 100)
             
-            # 4. Buscar subcadenas de 4+ caracteres
             if coincidencia < 40 and len(numero_parte_normalizado) >= 4:
                 for i in range(len(numero_parte_normalizado) - 3):
                     subcadena = numero_parte_normalizado[i:i+4]
@@ -264,58 +409,6 @@ def procesar_datos(df):
     
     return df_proc
 
-def extraer_marca(descripcion):
-    """Extrae la marca de la descripción"""
-    if not isinstance(descripcion, str):
-        return "Desconocida"
-    
-    desc_upper = descripcion.upper()
-    
-    for marca in sorted(MARCAS_COMPLETAS, key=len, reverse=True):
-        if marca.upper() in desc_upper:
-            return marca
-    
-    if "HP" in desc_upper:
-        return "HP"
-    elif "LENOVO" in desc_upper:
-        return "LENOVO"
-    elif "DELL" in desc_upper:
-        return "DELL"
-    elif "ASUS" in desc_upper:
-        return "ASUS"
-    elif "SAMSUNG" in desc_upper:
-        return "SAMSUNG"
-    elif "LG" in desc_upper:
-        return "LG"
-    
-    return "Otra"
-
-def extraer_categoria(descripcion):
-    """Extrae la categoría de la descripción"""
-    if not isinstance(descripcion, str):
-        return "Sin Categoria"
-    
-    desc_upper = descripcion.upper()
-    
-    for nombre in CATEGORIAS_NOMBRES:
-        if nombre.upper() in desc_upper:
-            return nombre
-    
-    if "PORTATIL" in desc_upper or "NOTEBOOK" in desc_upper or "LAPTOP" in desc_upper:
-        return "COMPUTADORA PORTATIL"
-    elif "ESCRITORIO" in desc_upper or "DESKTOP" in desc_upper or "TORRE" in desc_upper:
-        return "COMPUTADORA DE ESCRITORIO"
-    elif "SERVIDOR" in desc_upper or "SERVER" in desc_upper:
-        return "ESTACION DE TRABAJO"
-    elif "MONITOR" in desc_upper or "PANTALLA" in desc_upper:
-        return "MONITOR" if "INTERACTIVA" not in desc_upper else "PANTALLA INTERACTIVA"
-    elif "TABLETA" in desc_upper:
-        return "TABLETA"
-    elif "ESCANER" in desc_upper:
-        return "ESCANER DE DOCUMENTOS"
-    
-    return "Otro"
-
 def calcular_estadisticas(df):
     """Calcula estadísticas de forma optimizada"""
     if df is None or df.empty:
@@ -422,7 +515,7 @@ def mostrar_tabla(df, titulo):
     st.dataframe(df_show, use_container_width=True, height=400)
 
 def mostrar_graficos_categoria(stats):
-    """Muestra gráficos de categoría y marca"""
+    """Muestra gráficos de categoría y marca usando Plotly con configuración segura"""
     if stats is None:
         return
     
@@ -438,7 +531,7 @@ def mostrar_graficos_categoria(stats):
                         title='Top 10 Marcas',
                         color_discrete_sequence=px.colors.qualitative.Set3)
             fig.update_traces(textposition='inside', textinfo='percent+label')
-            fig.update_layout(height=400)
+            fig.update_layout(height=400, margin=dict(l=20, r=20, t=40, b=20))
             st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
     
     with col2:
@@ -452,7 +545,7 @@ def mostrar_graficos_categoria(stats):
                         color='Categoría',
                         color_discrete_sequence=px.colors.qualitative.Set2)
             fig.update_traces(textposition='outside')
-            fig.update_layout(height=400)
+            fig.update_layout(height=400, margin=dict(l=20, r=20, t=40, b=20))
             st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
 def mostrar_analisis_fechas_optimizado(df):
@@ -513,17 +606,16 @@ def mostrar_analisis_fechas_optimizado(df):
         fig = px.bar(df_meses, x='mes_nombre', y='Cantidad', 
                     title=f'Productos por Mes - {año_sel}',
                     color='mes_nombre')
-        fig.update_layout(height=350, showlegend=False)
+        fig.update_layout(height=350, showlegend=False, margin=dict(l=20, r=20, t=40, b=20))
         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
     else:
         df_anios = df_fechas.groupby('año').size().reset_index(name='Cantidad')
         fig = px.bar(df_anios, x='año', y='Cantidad', 
                     title='Productos por Año',
                     color='año')
-        fig.update_layout(height=350, showlegend=False)
+        fig.update_layout(height=350, showlegend=False, margin=dict(l=20, r=20, t=40, b=20))
         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
-# ============ BUSCADOR ============
 def mostrar_buscador(df):
     """Muestra el buscador de número de parte con resultados en tabla"""
     st.subheader("🔍 Buscador de Número de Parte")
@@ -537,7 +629,6 @@ def mostrar_buscador(df):
     </div>
     """, unsafe_allow_html=True)
     
-    # Input de búsqueda
     col1, col2 = st.columns([3, 1])
     
     with col1:
@@ -561,7 +652,6 @@ def mostrar_buscador(df):
     with col1:
         buscar_click = st.button("🔍 Buscar", use_container_width=True, type="primary")
     
-    # Variable para almacenar resultados en session_state
     if 'resultados_busqueda' not in st.session_state:
         st.session_state.resultados_busqueda = None
     if 'ultima_busqueda' not in st.session_state:
@@ -573,12 +663,10 @@ def mostrar_buscador(df):
             st.session_state.resultados_busqueda = resultados_df
             st.session_state.ultima_busqueda = numero_parte
     
-    # Mostrar resultados si existen
     if st.session_state.resultados_busqueda is not None:
         resultados_df = st.session_state.resultados_busqueda
         
         if not resultados_df.empty:
-            # ============ MOSTRAR RESULTADOS EN TABLA ============
             st.markdown(f"""
             <div class="result-header">
                 <strong>🔍 Resultados para: {st.session_state.ultima_busqueda}</strong><br>
@@ -586,7 +674,6 @@ def mostrar_buscador(df):
             </div>
             """, unsafe_allow_html=True)
             
-            # Métricas rápidas
             col1, col2, col3, col4 = st.columns(4)
             with col1:
                 st.metric("Total", len(resultados_df))
@@ -602,15 +689,12 @@ def mostrar_buscador(df):
             
             st.divider()
             
-            # ============ TABLA PRINCIPAL ============
-            # Preparar tabla para mostrar
             tabla_show = resultados_df[[
                 'ID', 'marca', 'categoria', 'precio', 
                 'estado_ficha', 'estado_oferta', 'fecha_publicacion', 
                 'coincidencia', 'es_activo', 'es_junio_2026'
             ]].copy()
             
-            # Formatear columnas
             tabla_show['coincidencia'] = tabla_show['coincidencia'].apply(lambda x: f"{x}%")
             tabla_show['precio'] = tabla_show['precio'].apply(lambda x: f"${float(x):,.2f}" if x else "$0")
             tabla_show['estado'] = tabla_show['es_activo'].apply(
@@ -621,7 +705,6 @@ def mostrar_buscador(df):
             )
             tabla_show['descripcion'] = resultados_df['descripcion'].str[:150] + '...'
             
-            # Reordenar y renombrar columnas
             tabla_show = tabla_show[[
                 'ID', 'descripcion', 'marca', 'categoria', 'precio', 
                 'estado', 'estado_ficha', 'estado_oferta', 
@@ -636,7 +719,6 @@ def mostrar_buscador(df):
             
             st.dataframe(tabla_show, use_container_width=True, height=500)
             
-            # ============ BOTÓN DE EXPORTACIÓN ============
             st.subheader("💾 Exportar Resultados")
             col1, col2 = st.columns(2)
             
@@ -660,15 +742,152 @@ def mostrar_buscador(df):
             </div>
             """, unsafe_allow_html=True)
 
+# ============ NUEVA FUNCIÓN: RESUMEN JUNIO 2026 ACTIVO ============
+def mostrar_resumen_junio_activo(df):
+    """Muestra el resumen de Junio 2026 solo con estado OFERTADA y VIGENTE"""
+    
+    # Filtrar datos de Junio 2026 con estado activo
+    df_junio_activo = df[
+        (df['es_junio_2026'] == True) & 
+        (df['estado_ficha'] == 'OFERTADA') & 
+        (df['estado_oferta'] == 'VIGENTE')
+    ]
+    
+    if df_junio_activo.empty:
+        st.warning("⚠️ No se encontraron fichas en Junio 2026 con estado OFERTADA y VIGENTE")
+        return
+    
+    # Calcular estadísticas
+    stats_activo = calcular_estadisticas(df_junio_activo)
+    
+    # ============ HEADER VERDE ============
+    st.markdown("""
+    <div class="resumen-activo-header">
+        <h2>✅ RESUMEN JUNIO 2026 - FICHAS ACTIVAS</h2>
+        <p>Fichas con estado OFERTADA y VIGENTE</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # ============ MÉTRICAS ============
+    col1, col2, col3, col4, col5 = st.columns(5)
+    
+    with col1:
+        st.markdown(f"""
+        <div class="metric-card" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%);">
+            <div class="metric-value" style="color: white;">{stats_activo['total']}</div>
+            <div class="metric-label" style="color: white;">📦 Fichas Activas</div>
+            <div class="metric-sub" style="color: rgba(255,255,255,0.8);">Junio 2026</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{len(stats_activo['por_marca'])}</div>
+            <div class="metric-label">🏷️ Marcas</div>
+            <div class="metric-sub">Diferentes</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{len(stats_activo['por_categoria'])}</div>
+            <div class="metric-label">📂 Categorías</div>
+            <div class="metric-sub">Diferentes</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">${stats_activo['precio_promedio']:,.2f}</div>
+            <div class="metric-label">💰 Precio Promedio</div>
+            <div class="metric-sub">Min: ${stats_activo['precio_min']:,.2f}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col5:
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">${stats_activo['precio_max']:,.2f}</div>
+            <div class="metric-label">💰 Precio Máximo</div>
+            <div class="metric-sub">Mediana: ${stats_activo['precio_mediana']:,.2f}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.divider()
+    
+    # ============ GRÁFICOS ============
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("🏷️ Marcas - Junio 2026 (Activas)")
+        if stats_activo['por_marca']:
+            df_marcas = pd.DataFrame(list(stats_activo['por_marca'].items()), 
+                                     columns=['Marca', 'Cantidad'])
+            df_marcas = df_marcas.sort_values('Cantidad', ascending=False)
+            
+            fig = px.bar(df_marcas.head(15), x='Marca', y='Cantidad',
+                        title=f'Top 15 Marcas (Total: {stats_activo["total"]} activas)',
+                        color='Marca', text='Cantidad',
+                        color_discrete_sequence=px.colors.qualitative.Set2)
+            fig.update_traces(textposition='outside')
+            fig.update_layout(height=450, showlegend=False, margin=dict(l=20, r=20, t=40, b=40))
+            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    
+    with col2:
+        st.subheader("📂 Categorías - Junio 2026 (Activas)")
+        if stats_activo['por_categoria']:
+            df_cat = pd.DataFrame(list(stats_activo['por_categoria'].items()), 
+                                  columns=['Categoría', 'Cantidad'])
+            df_cat = df_cat.sort_values('Cantidad', ascending=False)
+            
+            fig = px.pie(df_cat, values='Cantidad', names='Categoría',
+                        title='Distribución por Categoría',
+                        color_discrete_sequence=px.colors.qualitative.Set3)
+            fig.update_traces(textposition='inside', textinfo='percent+label')
+            fig.update_layout(height=450, margin=dict(l=20, r=20, t=40, b=20))
+            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    
+    st.divider()
+    
+    # ============ TABLA DE DETALLE ============
+    st.subheader("📋 Detalle de Fichas Activas - Junio 2026")
+    
+    columnas_mostrar = ['ID_ProductoOfertado', 'descripcion', 'marca', 'categoria', 
+                        'precio', 'estado_ficha', 'estado_oferta', 'fecha_publicacion']
+    
+    df_show = df_junio_activo[columnas_mostrar].copy()
+    df_show['descripcion'] = df_show['descripcion'].str[:150] + '...'
+    df_show.columns = ['ID', 'Descripción', 'Marca', 'Categoría', 
+                       'Precio (USD)', 'Estado Ficha', 'Estado Oferta', 'Fecha Publicación']
+    
+    st.dataframe(df_show, use_container_width=True, height=400)
+    
+    # ============ EXPORTAR ============
+    st.subheader("💾 Exportar Datos - Junio 2026 Activas")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        csv = df_junio_activo.to_csv(index=False)
+        b64 = base64.b64encode(csv.encode()).decode()
+        href = f'<a href="data:file/csv;base64,{b64}" download="junio_2026_activas.csv" style="background-color: #1f77b4; color: white; padding: 8px 16px; border-radius: 5px; text-decoration: none;">📥 Descargar CSV</a>'
+        st.markdown(href, unsafe_allow_html=True)
+    
+    with col2:
+        json_str = df_junio_activo.to_json(orient='records', date_format='iso')
+        b64_json = base64.b64encode(json_str.encode()).decode()
+        href_json = f'<a href="data:file/json;base64,{b64_json}" download="junio_2026_activas.json" style="background-color: #28a745; color: white; padding: 8px 16px; border-radius: 5px; text-decoration: none;">📥 Descargar JSON</a>'
+        st.markdown(href_json, unsafe_allow_html=True)
+
 # ============ MAIN ============
 def main():
     st.markdown('<h1 class="main-header">📊 Dashboard de Análisis de Productos</h1>', unsafe_allow_html=True)
     
-    # Inicializar estado
     if 'datos_cargados' not in st.session_state:
         st.session_state.datos_cargados = False
     
-    # Sidebar
     with st.sidebar:
         st.header("⚙️ Configuración")
         
@@ -692,30 +911,31 @@ def main():
             st.success(st.session_state.mensaje_carga)
             st.info(f"Registros: {len(st.session_state.df_proc)}")
     
-    # Verificar datos
     if not st.session_state.datos_cargados:
         st.info("📁 Haz clic en 'Cargar Datos' en el panel izquierdo")
         return
     
     df = st.session_state.df_proc
-    
-    # Aplicar filtros
     df_filtrado = mostrar_filtros(df)
     
     if df_filtrado.empty:
         st.warning("No hay datos con los filtros seleccionados")
         return
     
-    # Calcular estadísticas
     stats = calcular_estadisticas(df_filtrado)
     
-    # ============ JUNIO 2026 ============
+    # ============ NUEVO APARTADO: RESUMEN JUNIO 2026 ACTIVO ============
+    mostrar_resumen_junio_activo(df)
+    
+    st.divider()
+    
+    # ============ JUNIO 2026 (TODAS) ============
     df_junio = df[df['es_junio_2026'] == True]
     
     st.markdown("""
     <div class="junio-header">
-        <h2>📊 RESULTADOS DE JUNIO 2026</h2>
-        <p>Fichas con fecha de publicación en Junio 2026</p>
+        <h2>📊 RESULTADOS DE JUNIO 2026 (TODAS LAS FICHAS)</h2>
+        <p>Incluye todos los estados</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -728,7 +948,7 @@ def main():
             st.markdown(f"""
             <div class="metric-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
                 <div class="metric-value" style="color: white;">{stats_junio['total']}</div>
-                <div class="metric-label" style="color: white;">📦 Nuevas</div>
+                <div class="metric-label" style="color: white;">📦 Total Junio</div>
             </div>
             """, unsafe_allow_html=True)
         
@@ -761,6 +981,7 @@ def main():
             <div class="metric-card" style="background: #28a745; color: white;">
                 <div class="metric-value" style="color: white;">{stats_junio['activos']}</div>
                 <div class="metric-label" style="color: white;">✅ Activas</div>
+                <div class="metric-sub" style="color: rgba(255,255,255,0.8);">OFERTADA + VIGENTE</div>
             </div>
             """, unsafe_allow_html=True)
         
@@ -776,7 +997,7 @@ def main():
                             title='Top 10 Marcas - Junio 2026',
                             color='Marca', text='Cantidad')
                 fig.update_traces(textposition='outside')
-                fig.update_layout(height=350, showlegend=False)
+                fig.update_layout(height=350, showlegend=False, margin=dict(l=20, r=20, t=40, b=20))
                 st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
         
         with col2:
@@ -787,11 +1008,11 @@ def main():
                             title='Categorías - Junio 2026',
                             color_discrete_sequence=px.colors.qualitative.Set2)
                 fig.update_traces(textposition='inside', textinfo='percent+label')
-                fig.update_layout(height=350)
+                fig.update_layout(height=350, margin=dict(l=20, r=20, t=40, b=20))
                 st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
         
         st.divider()
-        mostrar_tabla(df_junio, "📋 Detalle - Junio 2026")
+        mostrar_tabla(df_junio, "📋 Detalle - Junio 2026 (Todas)")
     
     else:
         st.warning("No se encontraron fichas en Junio 2026")
@@ -823,7 +1044,7 @@ def main():
             fig = px.bar(df_marcas, x='Marca', y='Cantidad', 
                         color='Marca', text='Cantidad')
             fig.update_traces(textposition='outside')
-            fig.update_layout(height=400, showlegend=False)
+            fig.update_layout(height=400, showlegend=False, margin=dict(l=20, r=20, t=40, b=20))
             st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
             st.dataframe(df_marcas, use_container_width=True)
     
@@ -836,7 +1057,7 @@ def main():
             fig = px.pie(df_cat, values='Cantidad', names='Categoría',
                         color_discrete_sequence=px.colors.qualitative.Set2)
             fig.update_traces(textposition='inside', textinfo='percent+label')
-            fig.update_layout(height=400)
+            fig.update_layout(height=400, margin=dict(l=20, r=20, t=40, b=20))
             st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
             st.dataframe(df_cat, use_container_width=True)
     
