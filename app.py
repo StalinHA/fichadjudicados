@@ -107,21 +107,6 @@ st.markdown("""
         background-color: #1f77b4;
         color: white !important;
     }
-    .junio-header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 1.5rem;
-        border-radius: 15px;
-        margin: 1rem 0;
-        text-align: center;
-    }
-    .junio-header h2 {
-        color: white !important;
-        margin: 0;
-    }
-    .junio-header p {
-        color: rgba(255,255,255,0.9) !important;
-        margin: 0;
-    }
     .resumen-activo-header {
         background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
         padding: 1.5rem;
@@ -742,28 +727,28 @@ def mostrar_buscador(df):
             </div>
             """, unsafe_allow_html=True)
 
-# ============ NUEVA FUNCIÓN: RESUMEN JUNIO 2026 ACTIVO ============
+# ============ RESUMEN JUNIO 2026 ACTIVO ============
 def mostrar_resumen_junio_activo(df):
-    """Muestra el resumen de Junio 2026 solo con estado OFERTADA y VIGENTE"""
+    """Muestra SOLO las fichas de Junio 2026 con estado OFERTADA y VIGENTE"""
     
-    # Filtrar datos de Junio 2026 con estado activo
-    df_junio_activo = df[
+    # FILTRO ESTRICTO: Solo Junio 2026 + OFERTADA + VIGENTE
+    df_filtrado = df[
         (df['es_junio_2026'] == True) & 
         (df['estado_ficha'] == 'OFERTADA') & 
         (df['estado_oferta'] == 'VIGENTE')
     ]
     
-    if df_junio_activo.empty:
-        st.warning("⚠️ No se encontraron fichas en Junio 2026 con estado OFERTADA y VIGENTE")
+    if df_filtrado.empty:
+        st.warning("⚠️ No hay fichas en Junio 2026 con estado OFERTADA y VIGENTE")
         return
     
-    # Calcular estadísticas
-    stats_activo = calcular_estadisticas(df_junio_activo)
+    # Calcular estadísticas solo de este filtro
+    stats = calcular_estadisticas(df_filtrado)
     
-    # ============ HEADER VERDE ============
+    # ============ HEADER ============
     st.markdown("""
     <div class="resumen-activo-header">
-        <h2>✅ RESUMEN JUNIO 2026 - FICHAS ACTIVAS</h2>
+        <h2>✅ JUNIO 2026 - FICHAS ACTIVAS</h2>
         <p>Fichas con estado OFERTADA y VIGENTE</p>
     </div>
     """, unsafe_allow_html=True)
@@ -774,7 +759,7 @@ def mostrar_resumen_junio_activo(df):
     with col1:
         st.markdown(f"""
         <div class="metric-card" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%);">
-            <div class="metric-value" style="color: white;">{stats_activo['total']}</div>
+            <div class="metric-value" style="color: white;">{stats['total']}</div>
             <div class="metric-label" style="color: white;">📦 Fichas Activas</div>
             <div class="metric-sub" style="color: rgba(255,255,255,0.8);">Junio 2026</div>
         </div>
@@ -783,36 +768,32 @@ def mostrar_resumen_junio_activo(df):
     with col2:
         st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-value">{len(stats_activo['por_marca'])}</div>
+            <div class="metric-value">{len(stats['por_marca'])}</div>
             <div class="metric-label">🏷️ Marcas</div>
-            <div class="metric-sub">Diferentes</div>
         </div>
         """, unsafe_allow_html=True)
     
     with col3:
         st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-value">{len(stats_activo['por_categoria'])}</div>
+            <div class="metric-value">{len(stats['por_categoria'])}</div>
             <div class="metric-label">📂 Categorías</div>
-            <div class="metric-sub">Diferentes</div>
         </div>
         """, unsafe_allow_html=True)
     
     with col4:
         st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-value">${stats_activo['precio_promedio']:,.2f}</div>
+            <div class="metric-value">${stats['precio_promedio']:,.2f}</div>
             <div class="metric-label">💰 Precio Promedio</div>
-            <div class="metric-sub">Min: ${stats_activo['precio_min']:,.2f}</div>
         </div>
         """, unsafe_allow_html=True)
     
     with col5:
         st.markdown(f"""
         <div class="metric-card">
-            <div class="metric-value">${stats_activo['precio_max']:,.2f}</div>
+            <div class="metric-value">${stats['precio_max']:,.2f}</div>
             <div class="metric-label">💰 Precio Máximo</div>
-            <div class="metric-sub">Mediana: ${stats_activo['precio_mediana']:,.2f}</div>
         </div>
         """, unsafe_allow_html=True)
     
@@ -822,24 +803,24 @@ def mostrar_resumen_junio_activo(df):
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("🏷️ Marcas - Junio 2026 (Activas)")
-        if stats_activo['por_marca']:
-            df_marcas = pd.DataFrame(list(stats_activo['por_marca'].items()), 
+        st.subheader("🏷️ Marcas")
+        if stats['por_marca']:
+            df_marcas = pd.DataFrame(list(stats['por_marca'].items()), 
                                      columns=['Marca', 'Cantidad'])
             df_marcas = df_marcas.sort_values('Cantidad', ascending=False)
             
             fig = px.bar(df_marcas.head(15), x='Marca', y='Cantidad',
-                        title=f'Top 15 Marcas (Total: {stats_activo["total"]} activas)',
+                        title=f'Top 15 Marcas (Total: {stats["total"]} activas)',
                         color='Marca', text='Cantidad',
                         color_discrete_sequence=px.colors.qualitative.Set2)
             fig.update_traces(textposition='outside')
-            fig.update_layout(height=450, showlegend=False, margin=dict(l=20, r=20, t=40, b=40))
+            fig.update_layout(height=400, showlegend=False, margin=dict(l=20, r=20, t=40, b=40))
             st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
     
     with col2:
-        st.subheader("📂 Categorías - Junio 2026 (Activas)")
-        if stats_activo['por_categoria']:
-            df_cat = pd.DataFrame(list(stats_activo['por_categoria'].items()), 
+        st.subheader("📂 Categorías")
+        if stats['por_categoria']:
+            df_cat = pd.DataFrame(list(stats['por_categoria'].items()), 
                                   columns=['Categoría', 'Cantidad'])
             df_cat = df_cat.sort_values('Cantidad', ascending=False)
             
@@ -847,18 +828,18 @@ def mostrar_resumen_junio_activo(df):
                         title='Distribución por Categoría',
                         color_discrete_sequence=px.colors.qualitative.Set3)
             fig.update_traces(textposition='inside', textinfo='percent+label')
-            fig.update_layout(height=450, margin=dict(l=20, r=20, t=40, b=20))
+            fig.update_layout(height=400, margin=dict(l=20, r=20, t=40, b=20))
             st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
     
     st.divider()
     
     # ============ TABLA DE DETALLE ============
-    st.subheader("📋 Detalle de Fichas Activas - Junio 2026")
+    st.subheader("📋 Detalle de Fichas Activas")
     
     columnas_mostrar = ['ID_ProductoOfertado', 'descripcion', 'marca', 'categoria', 
                         'precio', 'estado_ficha', 'estado_oferta', 'fecha_publicacion']
     
-    df_show = df_junio_activo[columnas_mostrar].copy()
+    df_show = df_filtrado[columnas_mostrar].copy()
     df_show['descripcion'] = df_show['descripcion'].str[:150] + '...'
     df_show.columns = ['ID', 'Descripción', 'Marca', 'Categoría', 
                        'Precio (USD)', 'Estado Ficha', 'Estado Oferta', 'Fecha Publicación']
@@ -866,17 +847,17 @@ def mostrar_resumen_junio_activo(df):
     st.dataframe(df_show, use_container_width=True, height=400)
     
     # ============ EXPORTAR ============
-    st.subheader("💾 Exportar Datos - Junio 2026 Activas")
+    st.subheader("💾 Exportar Datos")
     col1, col2 = st.columns(2)
     
     with col1:
-        csv = df_junio_activo.to_csv(index=False)
+        csv = df_filtrado.to_csv(index=False)
         b64 = base64.b64encode(csv.encode()).decode()
         href = f'<a href="data:file/csv;base64,{b64}" download="junio_2026_activas.csv" style="background-color: #1f77b4; color: white; padding: 8px 16px; border-radius: 5px; text-decoration: none;">📥 Descargar CSV</a>'
         st.markdown(href, unsafe_allow_html=True)
     
     with col2:
-        json_str = df_junio_activo.to_json(orient='records', date_format='iso')
+        json_str = df_filtrado.to_json(orient='records', date_format='iso')
         b64_json = base64.b64encode(json_str.encode()).decode()
         href_json = f'<a href="data:file/json;base64,{b64_json}" download="junio_2026_activas.json" style="background-color: #28a745; color: white; padding: 8px 16px; border-radius: 5px; text-decoration: none;">📥 Descargar JSON</a>'
         st.markdown(href_json, unsafe_allow_html=True)
@@ -924,7 +905,7 @@ def main():
     
     stats = calcular_estadisticas(df_filtrado)
     
-    # ============ NUEVO APARTADO: RESUMEN JUNIO 2026 ACTIVO ============
+    # ============ APARTADO: RESUMEN JUNIO 2026 ACTIVO ============
     mostrar_resumen_junio_activo(df)
     
     st.divider()
@@ -933,9 +914,9 @@ def main():
     df_junio = df[df['es_junio_2026'] == True]
     
     st.markdown("""
-    <div class="junio-header">
-        <h2>📊 RESULTADOS DE JUNIO 2026 (TODAS LAS FICHAS)</h2>
-        <p>Incluye todos los estados</p>
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 1rem; border-radius: 10px; margin: 1rem 0; text-align: center;">
+        <h2 style="color: white; margin: 0;">📊 JUNIO 2026 - TODAS LAS FICHAS</h2>
+        <p style="color: rgba(255,255,255,0.8); margin: 0;">Incluye todos los estados</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -946,9 +927,9 @@ def main():
         
         with col1:
             st.markdown(f"""
-            <div class="metric-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-                <div class="metric-value" style="color: white;">{stats_junio['total']}</div>
-                <div class="metric-label" style="color: white;">📦 Total Junio</div>
+            <div class="metric-card">
+                <div class="metric-value">{stats_junio['total']}</div>
+                <div class="metric-label">📦 Total Junio</div>
             </div>
             """, unsafe_allow_html=True)
         
@@ -981,7 +962,6 @@ def main():
             <div class="metric-card" style="background: #28a745; color: white;">
                 <div class="metric-value" style="color: white;">{stats_junio['activos']}</div>
                 <div class="metric-label" style="color: white;">✅ Activas</div>
-                <div class="metric-sub" style="color: rgba(255,255,255,0.8);">OFERTADA + VIGENTE</div>
             </div>
             """, unsafe_allow_html=True)
         
@@ -994,7 +974,7 @@ def main():
                                          columns=['Marca', 'Cantidad'])
                 df_marcas = df_marcas.sort_values('Cantidad', ascending=False)
                 fig = px.bar(df_marcas.head(10), x='Marca', y='Cantidad',
-                            title='Top 10 Marcas - Junio 2026',
+                            title='Top 10 Marcas',
                             color='Marca', text='Cantidad')
                 fig.update_traces(textposition='outside')
                 fig.update_layout(height=350, showlegend=False, margin=dict(l=20, r=20, t=40, b=20))
@@ -1005,14 +985,14 @@ def main():
                 df_cat = pd.DataFrame(list(stats_junio['por_categoria'].items()), 
                                       columns=['Categoría', 'Cantidad'])
                 fig = px.pie(df_cat, values='Cantidad', names='Categoría',
-                            title='Categorías - Junio 2026',
+                            title='Categorías',
                             color_discrete_sequence=px.colors.qualitative.Set2)
                 fig.update_traces(textposition='inside', textinfo='percent+label')
                 fig.update_layout(height=350, margin=dict(l=20, r=20, t=40, b=20))
                 st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
         
         st.divider()
-        mostrar_tabla(df_junio, "📋 Detalle - Junio 2026 (Todas)")
+        mostrar_tabla(df_junio, "📋 Detalle - Junio 2026")
     
     else:
         st.warning("No se encontraron fichas en Junio 2026")
