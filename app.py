@@ -380,7 +380,8 @@ def procesar_datos(df):
     # Convertir precio
     df_proc['precio_float'] = pd.to_numeric(df_proc['precio'], errors='coerce')
     
-    # Estado activo
+    # ============ ESTADO ACTIVO ============
+    # SOLO si estado_ficha = "OFERTADA" Y estado_oferta = "VIGENTE"
     df_proc['es_activo'] = (df_proc['estado_ficha'] == 'OFERTADA') & (df_proc['estado_oferta'] == 'VIGENTE')
     
     # Junio 2026
@@ -729,9 +730,15 @@ def mostrar_buscador(df):
 
 # ============ RESUMEN JUNIO 2026 ACTIVO ============
 def mostrar_resumen_junio_activo(df):
-    """Muestra SOLO las fichas de Junio 2026 con estado OFERTADA y VIGENTE"""
+    """
+    MUESTRA SOLO las fichas que cumplen TODAS estas condiciones:
+    1. fecha_publicacion en Junio 2026
+    2. estado_ficha = "OFERTADA"
+    3. estado_oferta = "VIGENTE"
+    """
     
-    # FILTRO ESTRICTO: Solo Junio 2026 + OFERTADA + VIGENTE
+    # ============ FILTRO ESTRICTO ============
+    # SOLO si es JUNIO 2026 Y estado_ficha = "OFERTADA" Y estado_oferta = "VIGENTE"
     df_filtrado = df[
         (df['es_junio_2026'] == True) & 
         (df['estado_ficha'] == 'OFERTADA') & 
